@@ -1,4 +1,13 @@
 {
   "name": "Wingman",
-  "displayName": "Wingman"
+  "displayName": "Wingman",
+  "expo": {
+    "name": "Wingman",
+    "slug": "wingman",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "android": {
+      "package": "com.wingman"
+    }
+  }
 }

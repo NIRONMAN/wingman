@@ -16,3 +16,13 @@ jest.mock('react-native-safe-area-context', () => {
 jest.mock('react-native-screens', () => ({
   enableScreens: jest.fn(),
 }));
+
+// Mock react-native-image-picker
+jest.mock('react-native-image-picker', () => ({
+  launchCamera: jest.fn((_, callback) =>
+    callback({ assets: [{ base64: 'mock_base64_data', width: 640, height: 480 }] })
+  ),
+  launchImageLibrary: jest.fn((_, callback) =>
+    callback({ assets: [{ base64: 'mock_base64_data', width: 640, height: 480 }] })
+  ),
+}));
