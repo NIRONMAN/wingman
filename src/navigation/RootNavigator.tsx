@@ -1,29 +1,24 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { View, StyleSheet } from 'react-native';
-import { NavigationContainer } from '@react-navigation/native';
-import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { ChatScreen } from '../screens/ChatScreen';
 import { SettingsScreen } from '../screens/SettingsScreen';
 import { CallScreen } from '../screens/CallScreen';
 
-const Stack = createNativeStackNavigator();
-
 export const RootNavigator: React.FC = () => {
+  const [currentScreen, setCurrentScreen] = useState<'Chat' | 'Settings'>('Chat');
+
+  const navigation = {
+    navigate: (screen: 'Chat' | 'Settings') => setCurrentScreen(screen),
+    goBack: () => setCurrentScreen('Chat'),
+  };
+
   return (
     <View style={styles.container}>
-      <NavigationContainer>
-        <Stack.Navigator
-          initialRouteName="Chat"
-          screenOptions={{
-            headerShown: false,
-            animation: 'slide_from_right',
-            contentStyle: { backgroundColor: '#0F172A' },
-          }}
-        >
-          <Stack.Screen name="Chat" component={ChatScreen} />
-          <Stack.Screen name="Settings" component={SettingsScreen} />
-        </Stack.Navigator>
-      </NavigationContainer>
+      {currentScreen === 'Chat' ? (
+        <ChatScreen navigation={navigation} />
+      ) : (
+        <SettingsScreen navigation={navigation} />
+      )}
 
       {/* Global Call Screen Overlay */}
       <CallScreen />

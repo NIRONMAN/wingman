@@ -14,6 +14,9 @@ const PORT = process.env.PORT || 8765;
 
 // Create HTTP server
 const server = http.createServer((req, res) => {
+  if (req.headers.upgrade && req.headers.upgrade.toLowerCase() === 'websocket') {
+    return;
+  }
   // Simple HTTP triggers for testing
   const url = new URL(req.url, `http://${req.headers.host}`);
 
@@ -364,6 +367,7 @@ server.listen(PORT, () => {
 });
 
 function setupCli() {
+  if (!process.stdin.isTTY) return;
   const rl = readline.createInterface({
     input: process.stdin,
     output: process.stdout,

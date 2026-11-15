@@ -43,9 +43,11 @@ export class HermesClient {
         ? serverUrl
         : `ws://${serverUrl}`;
 
+      console.log('[HermesClient] Connecting to:', urlWithProtocol);
       this.ws = new WebSocketImpl(urlWithProtocol);
 
       this.ws.onopen = () => {
+        console.log('[HermesClient] Connected successfully to:', urlWithProtocol);
         this.reconnectAttempts = 0;
         useChatStore.getState().setConnectionStatus('connected');
 
@@ -61,10 +63,11 @@ export class HermesClient {
       };
 
       this.ws.onerror = (error: any) => {
-        // Socket error; will trigger onclose
+        console.log('[HermesClient] WebSocket error:', error?.message || error);
       };
 
-      this.ws.onclose = () => {
+      this.ws.onclose = (event: any) => {
+        console.log('[HermesClient] WebSocket closed:', event?.code, event?.reason);
         this.cleanupSocket();
         if (!this.isIntentionallyClosed) {
           useChatStore.getState().setConnectionStatus('disconnected');
