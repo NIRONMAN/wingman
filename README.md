@@ -553,7 +553,7 @@ If a permission is disabled, any incoming `tools/call` for that capability is re
 
 **Niranjan Dabhade**
 - GitHub: [@NIRONMAN](https://github.com/NIRONMAN)
-- Website: [niranjandabhade.dev](https://niranjandabhade.dev)
+- Website: [nironman.com](https://nironman.com)
 
 ---
 
