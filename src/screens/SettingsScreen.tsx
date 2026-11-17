@@ -17,6 +17,7 @@ import { HermesClient } from '../services/hermes/client';
 import { NativeHapticsService } from '../services/mcp/hardware/nativeHaptics';
 import { NativeTorchService } from '../services/mcp/hardware/nativeTorch';
 import { NativeDeviceInfoService } from '../services/mcp/hardware/nativeDeviceInfo';
+import { McpRegistry } from '../services/mcp/registry';
 
 interface Props {
   navigation: any;
@@ -96,6 +97,52 @@ export const SettingsScreen: React.FC<Props> = ({ navigation }) => {
       'Device Telemetry',
       `Battery: ${data.batteryLevel}%\nCharging: ${data.isCharging}\nNetwork: ${data.networkType}\nDevice: ${data.deviceModel}\nOS: ${data.systemName} ${data.systemVersion}`
     );
+  };
+
+  const handleTestAlarm = async () => {
+    NativeHapticsService.trigger('light');
+    const now = new Date();
+    const testDate = new Date(now.getTime() + 2 * 60 * 1000);
+    const hour = testDate.getHours();
+    const minutes = testDate.getMinutes();
+
+    try {
+      const res = await McpRegistry.executeTool('set_alarm', {
+        hour,
+        minutes,
+        label: 'Wingman Diagnostic Alarm',
+        skipUi: false,
+      });
+      const text = res.content[0]?.text || 'Alarm test complete';
+      Alert.alert('Alarm Scheduled', text);
+    } catch (err: any) {
+      Alert.alert('Alarm Error', err.message);
+    }
+  };
+
+  const handleTestReminder = async () => {
+    NativeHapticsService.trigger('light');
+    try {
+      const res = await McpRegistry.executeTool('set_reminder', {
+        title: 'Diagnostic Test Reminder',
+        notes: 'Testing physical reminder notification & calendar dispatch',
+        dueTime: '+1m',
+        target: 'both',
+      });
+      const text = res.content[0]?.text || 'Reminder scheduled';
+      Alert.alert('Reminder Scheduled', text);
+    } catch (err: any) {
+      Alert.alert('Reminder Error', err.message);
+    }
+  };
+
+  const handleOpenClock = async () => {
+    NativeHapticsService.trigger('light');
+    try {
+      await McpRegistry.executeTool('show_clock', { view: 'alarms' });
+    } catch (err: any) {
+      Alert.alert('Clock Error', err.message);
+    }
   };
 
   return (
@@ -213,6 +260,16 @@ export const SettingsScreen: React.FC<Props> = ({ navigation }) => {
               thumbColor="#FFFFFF"
             />
           </View>
+
+          <View style={styles.switchRow}>
+            <Text style={styles.switchLabel}>⏰ Alarms & Reminders</Text>
+            <Switch
+              value={permissions.allowAlarmsAndReminders}
+              onValueChange={(val) => setPermission('allowAlarmsAndReminders', val)}
+              trackColor={{ false: '#334155', true: '#10B981' }}
+              thumbColor="#FFFFFF"
+            />
+          </View>
         </View>
 
         {/* Section 3: Diagnostic Self-Tests */}
@@ -234,6 +291,21 @@ export const SettingsScreen: React.FC<Props> = ({ navigation }) => {
             <TouchableOpacity style={styles.testBtn} onPress={handleTestFlashlight}>
               <Text style={styles.testBtnIcon}>🔦</Text>
               <Text style={styles.testBtnText}>Test Torch</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity style={styles.testBtn} onPress={handleTestAlarm}>
+              <Text style={styles.testBtnIcon}>⏰</Text>
+              <Text style={styles.testBtnText}>Test Alarm</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity style={styles.testBtn} onPress={handleTestReminder}>
+              <Text style={styles.testBtnIcon}>🔔</Text>
+              <Text style={styles.testBtnText}>Test Reminder</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity style={styles.testBtn} onPress={handleOpenClock}>
+              <Text style={styles.testBtnIcon}>🕒</Text>
+              <Text style={styles.testBtnText}>Open Clock</Text>
             </TouchableOpacity>
 
             <TouchableOpacity style={styles.testBtn} onPress={handleTestTelemetry}>

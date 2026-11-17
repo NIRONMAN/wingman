@@ -65,9 +65,11 @@ Wingman fulfills two intertwined roles:
   - 📸 **Snap & Inspect**: Capture rear/front camera photo and attach to Hermes' vision input.
   - 🔦 **Torch Strobe**: Pulse the hardware camera flashlight.
   - 🔋 **Device Telemetry**: Send battery %, charging status, and network health report.
+  - ⏰ **Set Alarm**: Quick shortcut to configure a native smartphone alarm.
+  - 🔔 **Set Reminder**: Quick shortcut to schedule a reminder.
 
 ### 2. Physical MCP Tool Registry (`src/services/mcp/`)
-Exposes 8 physical mobile tools over standard MCP JSON-RPC:
+Exposes physical mobile tools over standard MCP JSON-RPC:
 
 | MCP Tool Name | Description | Key Parameters |
 |---|---|---|
@@ -78,7 +80,12 @@ Exposes 8 physical mobile tools over standard MCP JSON-RPC:
 | `capture_snapshot` | Takes photo using rear or front lens to feed visual frames back to Hermes vision processing. | `cameraType: 'back' \| 'front'`, `quality` |
 | `get_device_telemetry` | Reports battery %, charging state, network connectivity, volume, device model, and OS version. | None |
 | `access_clipboard` | Reads or writes text from/to device clipboard. | `action: 'read' \| 'write'`, `text` |
-| `set_alarm_or_timer` | Sets native device countdown timer with haptic buzz and alert on completion. | `durationSeconds`, `label`, `notifyWhenDone` |
+| `set_alarm` | Sets a real native system clock alarm in the user's default Clock app (Google Clock, Moto Clock, etc.) with hour, minute, vibrate, and days. | `hour`, `minutes`, `label`, `skipUi`, `vibrate`, `days` |
+| `set_reminder` | Schedules a reminder with title, notes, and due time (relative like `+15m`, or time-of-day/ISO). Dispatches in-app notification alerts and/or launches native Calendar app event. | `title`, `notes`, `dueTime`, `target`, `allDay`, `location` |
+| `list_reminders` | Lists all active and scheduled reminders and alarms with remaining minutes and status. | `status: 'pending' \| 'triggered' \| 'all'` |
+| `cancel_reminder` | Cancels a scheduled reminder or timer by its tracking ID. | `reminderId` |
+| `show_clock` | Opens the device Clock app directly to inspect alarms or timers. | `view: 'alarms' \| 'timers'` |
+| `set_alarm_or_timer` | Sets native device countdown timer or alarm with haptic buzz and alert on completion. | `durationSeconds`, `label`, `notifyWhenDone` |
 
 ### 3. Realistic Simulated Call System (`src/screens/CallScreen.tsx`)
 - **Incoming Call State**: Full-screen overlay resembling iOS/Android native phone dialers. Pulsating caller avatar rings, custom caller ID ("Doctor Clinic", "Hermes Priority Dispatch"), continuous vibration & ringtone audio, and Decline / Accept buttons.
@@ -86,11 +93,14 @@ Exposes 8 physical mobile tools over standard MCP JSON-RPC:
 
 ### 4. Settings & Device Control Center (`src/screens/SettingsScreen.tsx`)
 - **Connection Profile**: Hermes Server WebSocket URL (`ws://127.0.0.1:8765`), Bearer Auth Token, Auto-connect switch.
-- **Hardware Permission Toggles**: Granular privacy controls allowing/denying camera, flashlight, haptics, simulated calls, notifications, and clipboard.
+- **Hardware Permission Toggles**: Granular privacy controls allowing/denying camera, flashlight, haptics, simulated calls, notifications, clipboard, and alarms & reminders.
 - **Diagnostic Self-Tests**: One-tap local verification buttons:
   - Test Rescue Call
   - Test Haptic Buzz
   - Test Flashlight Strobe
+  - Test Alarm (`set_alarm`)
+  - Test Reminder (`set_reminder`)
+  - Open Clock (`show_clock`)
   - Test Telemetry Query
   - Ping Hermes Server
 - **Live MCP Execution Log**: Real-time inspector displaying all tool calls received from Hermes, execution status, elapsed milliseconds, arguments, and return payloads.

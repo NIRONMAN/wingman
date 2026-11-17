@@ -10,9 +10,9 @@ describe('McpRegistry', () => {
     useMcpLogStore.getState().clearLogs();
   });
 
-  it('lists all 8 physical tools conforming to MCP schemas', () => {
+  it('lists all physical tools conforming to MCP schemas', () => {
     const { tools } = McpRegistry.listTools();
-    expect(tools.length).toBe(8);
+    expect(tools.length).toBe(13);
 
     const toolNames = tools.map((t) => t.name);
     expect(toolNames).toContain('simulate_call');
@@ -23,6 +23,11 @@ describe('McpRegistry', () => {
     expect(toolNames).toContain('get_device_telemetry');
     expect(toolNames).toContain('access_clipboard');
     expect(toolNames).toContain('set_alarm_or_timer');
+    expect(toolNames).toContain('set_alarm');
+    expect(toolNames).toContain('set_reminder');
+    expect(toolNames).toContain('list_reminders');
+    expect(toolNames).toContain('cancel_reminder');
+    expect(toolNames).toContain('show_clock');
 
     tools.forEach((tool) => {
       expect(tool.description).toBeDefined();
@@ -112,5 +117,45 @@ describe('McpRegistry', () => {
     const res = await McpRegistry.executeTool('non_existent_tool', {});
     expect(res.isError).toBe(true);
     expect(res.content[0].text).toContain('Unknown MCP tool');
+  });
+
+  it('sets native clock alarm via set_alarm', async () => {
+    const res = await McpRegistry.executeTool('set_alarm', {
+      hour: 7,
+      minutes: 30,
+      label: 'Wake Up Flight',
+    });
+    expect(res.isError).toBeFalsy();
+    expect(res.content[0].text).toContain('Alarm scheduled successfully');
+    expect(res.content[0].text).toContain('Wake Up Flight');
+  });
+
+  it('schedules and cancels reminder via set_reminder, list_reminders, and cancel_reminder', async () => {
+    const setRes = await McpRegistry.executeTool('set_reminder', {
+      title: 'Buy Groceries',
+      notes: 'Almond milk and coffee',
+      dueTime: '+30m',
+      target: 'app_notification',
+    });
+    expect(setRes.isError).toBeFalsy();
+    expect(setRes.content[0].text).toContain('Buy Groceries');
+
+    // List reminders
+    const listRes = await McpRegistry.executeTool('list_reminders', { status: 'pending' });
+    expect(listRes.isError).toBeFalsy();
+    const list = JSON.parse(listRes.content[0].text!);
+    expect(Array.isArray(list)).toBe(true);
+    const grocery = list.find((i: any) => i.title === 'Buy Groceries');
+    expect(grocery).toBeDefined();
+
+    // Cancel reminder
+    const cancelRes = await McpRegistry.executeTool('cancel_reminder', { reminderId: grocery.id });
+    expect(cancelRes.content[0].text).toContain('cancelled successfully');
+  });
+
+  it('opens clock view via show_clock', async () => {
+    const res = await McpRegistry.executeTool('show_clock', { view: 'alarms' });
+    expect(res.isError).toBeFalsy();
+    expect(res.content[0].text).toContain('Clock alarms screen');
   });
 });

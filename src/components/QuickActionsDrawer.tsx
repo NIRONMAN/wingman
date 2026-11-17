@@ -46,6 +46,20 @@ export const QuickActionsDrawer: React.FC<Props> = ({ onOpenVoiceMemo }) => {
     );
   };
 
+  const handleQuickAlarm = () => {
+    NativeHapticsService.trigger('light');
+    HermesClient.getInstance().sendMessage(
+      '⏰ Can you set an alarm for 7:00 AM labeled "Morning Standup" on my phone?'
+    );
+  };
+
+  const handleQuickReminder = () => {
+    NativeHapticsService.trigger('light');
+    HermesClient.getInstance().sendMessage(
+      '🔔 Can you set a reminder for me in 20 minutes to "Review project notes"?'
+    );
+  };
+
   return (
     <View style={styles.container}>
       <Text style={styles.headerTitle}>QUICK PHYSICAL ACTIONS</Text>
@@ -73,6 +87,16 @@ export const QuickActionsDrawer: React.FC<Props> = ({ onOpenVoiceMemo }) => {
         <TouchableOpacity style={styles.actionCard} onPress={handleDeviceTelemetry}>
           <Text style={styles.actionIcon}>🔋</Text>
           <Text style={styles.actionLabel}>Telemetry</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity style={styles.actionCard} onPress={handleQuickAlarm}>
+          <Text style={styles.actionIcon}>⏰</Text>
+          <Text style={styles.actionLabel}>Set Alarm</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity style={styles.actionCard} onPress={handleQuickReminder}>
+          <Text style={styles.actionIcon}>🔔</Text>
+          <Text style={styles.actionLabel}>Set Reminder</Text>
         </TouchableOpacity>
       </ScrollView>
     </View>

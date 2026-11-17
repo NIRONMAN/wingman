@@ -18,6 +18,7 @@ const DEFAULT_PERMISSIONS: HardwarePermissions = {
   allowClipboard: true,
   allowSimulatedCalls: true,
   allowHaptics: true,
+  allowAlarmsAndReminders: true,
 };
 
 export const useSettingsStore = create<SettingsStore>((set) => ({

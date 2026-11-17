@@ -6,6 +6,7 @@ export interface HardwarePermissions {
   allowClipboard: boolean;
   allowSimulatedCalls: boolean;
   allowHaptics: boolean;
+  allowAlarmsAndReminders: boolean;
 }
 
 export interface SettingsState {

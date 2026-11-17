@@ -190,4 +190,129 @@ export const MCP_TOOLS: McpToolDefinition[] = [
       required: ['durationSeconds'],
     },
   },
+  {
+    name: 'set_alarm',
+    description: 'Sets a physical device alarm on the user smartphone via native Clock system (specifying hour 0-23, minutes 0-59, label, vibrate, and repeating days).',
+    category: 'hardware',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        hour: {
+          type: 'number',
+          description: 'Hour of the day in 24-hour format (0-23)',
+        },
+        minutes: {
+          type: 'number',
+          description: 'Minute of the hour (0-59)',
+          default: 0,
+        },
+        label: {
+          type: 'string',
+          description: 'Label or purpose of the alarm (e.g., "Wake Up", "Team Standup", "Flight to NYC")',
+          default: 'Wingman Alarm',
+        },
+        skipUi: {
+          type: 'boolean',
+          description: 'Whether to set the alarm silently without foregrounding the Clock app interface',
+          default: false,
+        },
+        vibrate: {
+          type: 'boolean',
+          description: 'Whether device should vibrate during the alarm',
+          default: true,
+        },
+        days: {
+          type: 'array',
+          items: { type: 'number' },
+          description: 'Optional repeating days of week (1=Sunday, 2=Monday, 3=Tuesday, 4=Wednesday, 5=Thursday, 6=Friday, 7=Saturday)',
+        },
+      },
+      required: ['hour'],
+    },
+  },
+  {
+    name: 'set_reminder',
+    description: 'Schedules a physical smartphone reminder or calendar event with title, notes, and due date/time (supports relative time like "+15m", "2h", or exact timestamps/time).',
+    category: 'system',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        title: {
+          type: 'string',
+          description: 'Title or short summary of the reminder (e.g., "Call dentist", "Drink water", "Submit invoice")',
+        },
+        notes: {
+          type: 'string',
+          description: 'Detailed notes or instructions for the reminder',
+        },
+        dueTime: {
+          type: 'string',
+          description: 'Target due time: can be relative (e.g., "+15m", "30m", "2h", "1d"), time of day (e.g. "14:30", "7:00 PM"), or ISO-8601 string',
+        },
+        target: {
+          type: 'string',
+          enum: ['app_notification', 'calendar', 'both'],
+          description: 'Where to dispatch the reminder: in-app notification with alert/haptic, native Calendar app event, or both',
+          default: 'both',
+        },
+        allDay: {
+          type: 'boolean',
+          description: 'Whether this is an all-day reminder/event',
+          default: false,
+        },
+        location: {
+          type: 'string',
+          description: 'Optional physical location or meeting link',
+        },
+      },
+      required: ['title'],
+    },
+  },
+  {
+    name: 'list_reminders',
+    description: 'Lists active and scheduled reminders, alarms, and timers currently pending or triggered on the mobile device.',
+    category: 'system',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        status: {
+          type: 'string',
+          enum: ['pending', 'triggered', 'all'],
+          description: 'Filter reminders by status (default: pending)',
+          default: 'pending',
+        },
+      },
+    },
+  },
+  {
+    name: 'cancel_reminder',
+    description: 'Cancels a pending reminder or timer by its unique reminder ID.',
+    category: 'system',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        reminderId: {
+          type: 'string',
+          description: 'ID of the reminder to cancel',
+        },
+      },
+      required: ['reminderId'],
+    },
+  },
+  {
+    name: 'show_clock',
+    description: 'Opens the physical device Clock application to show all configured alarms or timers.',
+    category: 'system',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        view: {
+          type: 'string',
+          enum: ['alarms', 'timers'],
+          description: 'Which tab to show in Clock app: alarms or timers',
+          default: 'alarms',
+        },
+      },
+    },
+  },
 ];
