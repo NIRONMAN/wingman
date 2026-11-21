@@ -13,6 +13,9 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+permissions:
+  contents: write
+
 jobs:
   build-apk:
     name: Build & Package Android APK
@@ -24,6 +27,8 @@ jobs:
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -55,21 +60,49 @@ jobs:
           cd android
           ./gradlew assembleRelease --no-daemon --stacktrace
 
+      - name: Prepare Release APK Artifact
+        run: |
+          cp android/app/build/outputs/apk/release/app-release.apk android/app/build/outputs/apk/release/wingman-release.apk
+
       - name: Upload Release APK Artifact
         uses: actions/upload-artifact@v4
         with:
           name: wingman-release-apk
-          path: android/app/build/outputs/apk/release/*.apk
+          path: android/app/build/outputs/apk/release/wingman-release.apk
           retention-days: 14
 
-      - name: Build Debug APK
+      - name: Publish Latest Production Release
+        if: github.event_name != 'pull_request'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          cd android
-          ./gradlew assembleDebug --no-daemon --stacktrace
+          # Delete any previous releases and tags to ensure only the latest release is kept
+          echo "Purging older releases..."
+          gh release list --limit 100 --json tagName -q '.[].tagName' | while read -r old_tag; do
+            if [ -n "$old_tag" ]; then
+              echo "Deleting older release & tag: $old_tag"
+              gh release delete "$old_tag" --cleanup-tag --yes || true
+            fi
+          done
 
-      - name: Upload Debug APK Artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: wingman-debug-apk
-          path: android/app/build/outputs/apk/debug/*.apk
-          retention-days: 14
+          # Ensure leftover 'latest' tag is wiped via GitHub API if still present
+          gh api -X DELETE "/repos/${{ github.repository }}/git/refs/tags/latest" 2>/dev/null || true
+
+          COMMIT_SHORT=$(git rev-parse --short HEAD)
+          COMMIT_MSG=$(git log -1 --pretty=%B | head -n 1)
+          BUILD_DATE=$(date -u '+%Y-%m-%d %H:%M UTC')
+
+          echo "Publishing single latest production release..."
+          gh release create latest \
+            --target "${{ github.sha }}" \
+            --title "Wingman Production Build (${COMMIT_SHORT})" \
+            --notes "### 📱 Wingman Production Release
+
+          - **Commit**: \`${COMMIT_SHORT}\` - ${COMMIT_MSG}
+          - **Built at**: ${BUILD_DATE}
+          - **Environment**: Production Release (Android APK)
+
+          #### 📥 Direct Download
+          Download and install **[wingman-release.apk](https://github.com/${{ github.repository }}/releases/download/latest/wingman-release.apk)** on your Android device." \
+            --latest \
+            android/app/build/outputs/apk/release/wingman-release.apk
