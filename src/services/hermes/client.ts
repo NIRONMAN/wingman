@@ -12,7 +12,10 @@ export class HermesClient {
   private maxReconnectDelayMs = 10000;
   private pendingRequests: Map<string | number, { resolve: (res: any) => void; reject: (err: any) => void }> = new Map();
   private outgoingQueue: string[] = [];
+  private pendingPromptsQueue: string[] = [];
   private isIntentionallyClosed = false;
+  private currentSessionId: string | null = null;
+  private isCreatingSession = false;
 
   public static getInstance(): HermesClient {
     if (!HermesClient.instance) {
@@ -21,9 +24,17 @@ export class HermesClient {
     return HermesClient.instance;
   }
 
+  public getSessionId(): string | null {
+    return this.currentSessionId;
+  }
+
+  public setSessionId(sessionId: string | null): void {
+    this.currentSessionId = sessionId;
+  }
+
   public connect(): void {
     this.isIntentionallyClosed = false;
-    const { serverUrl, authToken } = useSettingsStore.getState();
+    const { serverUrl, authToken, connectionMethod } = useSettingsStore.getState();
 
     if (!serverUrl) {
       useChatStore.getState().setConnectionStatus('error');
@@ -39,20 +50,49 @@ export class HermesClient {
     try {
       // In React Native and modern Node, WebSocket is globally available
       const WebSocketImpl = typeof WebSocket !== 'undefined' ? WebSocket : (require('ws') as any);
-      const urlWithProtocol = serverUrl.startsWith('ws://') || serverUrl.startsWith('wss://')
+      let targetUrl = serverUrl.startsWith('ws://') || serverUrl.startsWith('wss://')
         ? serverUrl
         : `ws://${serverUrl}`;
 
-      console.log('[HermesClient] Connecting to:', urlWithProtocol);
-      this.ws = new WebSocketImpl(urlWithProtocol);
+      // Append auth token as query parameter if provided and not already present
+      if (authToken && authToken.trim()) {
+        try {
+          const parsed = new URL(targetUrl);
+          if (!parsed.searchParams.has('token') && !parsed.searchParams.has('authToken') && !parsed.searchParams.has('auth_token')) {
+            parsed.searchParams.set('token', authToken.trim());
+          }
+          targetUrl = parsed.toString();
+        } catch {
+          const sep = targetUrl.includes('?') ? '&' : '?';
+          targetUrl = `${targetUrl}${sep}token=${encodeURIComponent(authToken.trim())}`;
+        }
+      }
+
+      console.log(`[HermesClient] Connecting to: ${targetUrl} (mode: ${connectionMethod})`);
+
+      // In environments supporting custom headers (React Native, Node ws), pass Authorization headers
+      const wsOptions = authToken && authToken.trim() ? {
+        headers: {
+          Authorization: `Bearer ${authToken.trim()}`,
+          'X-Auth-Token': authToken.trim(),
+        },
+      } : undefined;
+
+      this.ws = new WebSocketImpl(targetUrl, undefined, wsOptions);
 
       this.ws.onopen = () => {
-        console.log('[HermesClient] Connected successfully to:', urlWithProtocol);
+        console.log('[HermesClient] Connected successfully to:', targetUrl);
         this.reconnectAttempts = 0;
         useChatStore.getState().setConnectionStatus('connected');
 
-        // Send handshake & capability announcement
-        this.sendHandshake(authToken);
+        if (connectionMethod === 'mock') {
+          // Send legacy handshake & capability announcement
+          this.sendHandshake(authToken);
+        } else {
+          // TUI Gateway: wait for gateway.ready or send session.create
+          console.log('[HermesClient] Initializing TUI Gateway session...');
+          this.createTuiSession();
+        }
 
         // Flush offline queue
         this.flushQueue();
@@ -69,6 +109,17 @@ export class HermesClient {
       this.ws.onclose = (event: any) => {
         console.log('[HermesClient] WebSocket closed:', event?.code, event?.reason);
         this.cleanupSocket();
+
+        if (event?.code === 4401) {
+          console.warn('[HermesClient] Connection rejected: 4401 Unauthorized');
+          useChatStore.getState().setConnectionStatus('error');
+          useChatStore.getState().addMessage({
+            role: 'assistant',
+            content: `🔒 **Connection Rejected (4401 Unauthorized)**: Invalid or missing authentication token. Please verify the Auth Token in Settings.`,
+          });
+          return;
+        }
+
         if (!this.isIntentionallyClosed) {
           useChatStore.getState().setConnectionStatus('disconnected');
           this.scheduleReconnect();
@@ -141,8 +192,38 @@ export class HermesClient {
     this.sendRaw(JSON.stringify(handshakeReq));
   }
 
+  /**
+   * Request a new or resumed session from the TUI Gateway
+   */
+  public async createTuiSession(source: 'tui' | 'cli' | 'gui' = 'tui'): Promise<string | null> {
+    if (this.isCreatingSession) return null;
+    this.isCreatingSession = true;
+
+    try {
+      const createReq = HermesProtocol.createSessionCreate(source);
+      console.log('[HermesClient] Requesting session.create on TUI Gateway...');
+      const response: any = await this.send(createReq);
+
+      if (response && response.session_id) {
+        this.currentSessionId = response.session_id;
+        console.log('[HermesClient] TUI Gateway session established:', this.currentSessionId);
+
+        // Flush any prompts that were queued waiting for a session
+        this.flushPendingPrompts();
+        return this.currentSessionId;
+      }
+    } catch (err: any) {
+      console.error('[HermesClient] Failed to create TUI session:', err?.message || err);
+    } finally {
+      this.isCreatingSession = false;
+    }
+
+    return null;
+  }
+
   public sendMessage(text: string, voiceMemo?: { durationSec: number; audioUri?: string }): string {
     const chatStore = useChatStore.getState();
+    const { connectionMethod } = useSettingsStore.getState();
 
     // Add user message to local chat immediately
     const userMsgId = chatStore.addMessage({
@@ -151,15 +232,42 @@ export class HermesClient {
       voiceMemo,
     });
 
-    // Prepare JSON-RPC request for Hermes
-    const chatReq = HermesProtocol.createRequest('chat/send', {
-      messageId: userMsgId,
-      text,
-      voiceMemo,
-    });
+    if (connectionMethod === 'tui_gateway') {
+      if (!this.currentSessionId) {
+        console.log('[HermesClient] No active session ID, queueing prompt and creating session...');
+        this.pendingPromptsQueue.push(text);
+        this.createTuiSession();
+      } else {
+        const promptReq = HermesProtocol.createPromptSubmit(this.currentSessionId, text);
+        this.send(promptReq).catch((err) => {
+          console.error('[HermesClient] prompt.submit error:', err?.message || err);
+        });
+      }
+    } else {
+      // Legacy Mock protocol
+      const chatReq = HermesProtocol.createRequest('chat/send', {
+        messageId: userMsgId,
+        text,
+        voiceMemo,
+      });
+      this.send(chatReq);
+    }
 
-    this.send(chatReq);
     return userMsgId;
+  }
+
+  private flushPendingPrompts(): void {
+    if (!this.currentSessionId) return;
+
+    while (this.pendingPromptsQueue.length > 0) {
+      const text = this.pendingPromptsQueue.shift();
+      if (text) {
+        const promptReq = HermesProtocol.createPromptSubmit(this.currentSessionId, text);
+        this.send(promptReq).catch((err) => {
+          console.error('[HermesClient] Error sending queued prompt:', err?.message || err);
+        });
+      }
+    }
   }
 
   public send(msg: JsonRpcMessage): Promise<any> {
@@ -209,6 +317,18 @@ export class HermesClient {
     const msg = HermesProtocol.parseMessage(text);
     if (!msg) return;
 
+    // Handle top-level Gateway error frames (e.g. 4401 Unauthorized or -32000 Gateway Error)
+    if ((msg as any).error && ((msg as any).id === null || (msg as any).id === undefined)) {
+      const err = (msg as any).error;
+      console.error('[HermesClient] Gateway error frame:', err.message);
+      useChatStore.getState().setConnectionStatus('error');
+      useChatStore.getState().addMessage({
+        role: 'assistant',
+        content: `🔒 **Gateway Error**: ${err.message || 'Authentication failed'}`,
+      });
+      return;
+    }
+
     // 1. Handle Response to an earlier client request
     if (HermesProtocol.isResponse(msg)) {
       const pending = this.pendingRequests.get(msg.id);
@@ -223,13 +343,13 @@ export class HermesClient {
       return;
     }
 
-    // 2. Handle Request from Hermes (e.g. MCP tools/list, tools/call)
+    // 2. Handle Request from Hermes (e.g. MCP tools/list, tools/call, ping)
     if (HermesProtocol.isRequest(msg)) {
       await this.handleIncomingRequest(msg);
       return;
     }
 
-    // 3. Handle Streaming / Notifications from Hermes
+    // 3. Handle Streaming / Notifications from Hermes (including TUI Gateway events)
     if (HermesProtocol.isNotification(msg)) {
       this.handleIncomingNotification(msg);
       return;
@@ -238,6 +358,13 @@ export class HermesClient {
 
   private async handleIncomingRequest(req: JsonRpcRequest): Promise<void> {
     const { method, params, id } = req;
+
+    // TUI Gateway ping
+    if (method === 'gateway.ping' || method === 'ping') {
+      const response = HermesProtocol.createResponse(id, { ok: true, timestamp: Date.now() });
+      this.sendRaw(JSON.stringify(response));
+      return;
+    }
 
     // MCP: List available tools
     if (method === 'tools/list') {
@@ -282,13 +409,6 @@ export class HermesClient {
       return;
     }
 
-    // Ping
-    if (method === 'ping') {
-      const response = HermesProtocol.createResponse(id, { pong: true, timestamp: Date.now() });
-      this.sendRaw(JSON.stringify(response));
-      return;
-    }
-
     // Unknown method
     const errResponse = HermesProtocol.createError(id, -32601, `Method not found: ${method}`);
     this.sendRaw(JSON.stringify(errResponse));
@@ -298,12 +418,79 @@ export class HermesClient {
     const { method, params } = notif;
     const chatStore = useChatStore.getState();
 
+    // ─── TUI Gateway Event Notifications ───
+    if (method === 'event' && params) {
+      const eventType = params.type;
+      const payload = params.payload || {};
+
+      // Gateway ready announcement
+      if (eventType === 'gateway.ready') {
+        console.log('[HermesClient] Received gateway.ready from TUI Gateway');
+        chatStore.setConnectionStatus('connected');
+        if (!this.currentSessionId) {
+          this.createTuiSession();
+        }
+        return;
+      }
+
+      // Turn began streaming
+      if (eventType === 'message.start') {
+        if (!chatStore.isStreaming) {
+          chatStore.startStreamingMessage('assistant', '');
+        }
+        return;
+      }
+
+      // Stream delta chunk from assistant
+      if (eventType === 'message.delta') {
+        const delta = payload.text || '';
+        if (delta) {
+          if (!chatStore.isStreaming || !chatStore.streamingMessageId) {
+            chatStore.startStreamingMessage('assistant', delta);
+          } else {
+            chatStore.appendStreamChunk(chatStore.streamingMessageId, delta);
+          }
+        }
+        return;
+      }
+
+      // Turn ended: final assistant reply
+      if (eventType === 'message.complete') {
+        if (chatStore.isStreaming && chatStore.streamingMessageId) {
+          chatStore.finishStreamingMessage(chatStore.streamingMessageId);
+        } else if (payload.text) {
+          // If no streaming message was active, add as complete message
+          chatStore.addMessage({
+            role: 'assistant',
+            content: payload.text,
+          });
+        }
+        return;
+      }
+
+      // Error event from Hermes
+      if (eventType === 'error') {
+        const errMsg = payload.message || 'Hermes turn error';
+        console.warn('[HermesClient] Error event:', errMsg);
+        if (chatStore.isStreaming && chatStore.streamingMessageId) {
+          chatStore.finishStreamingMessage(chatStore.streamingMessageId);
+        }
+        chatStore.addMessage({
+          role: 'assistant',
+          content: `⚠️ **Hermes Error**: ${errMsg}`,
+        });
+        return;
+      }
+
+      return;
+    }
+
+    // ─── Legacy Mock Server Notifications ───
     // Streaming chunk
     if (method === 'chat/stream_chunk' || method === 'chat.stream.chunk') {
       const { delta, messageId, isComplete } = params;
 
       if (!chatStore.isStreaming || chatStore.streamingMessageId !== messageId) {
-        // Start streaming message if not already active
         const activeId = chatStore.startStreamingMessage('assistant', delta || '');
         if (isComplete) {
           chatStore.finishStreamingMessage(activeId);

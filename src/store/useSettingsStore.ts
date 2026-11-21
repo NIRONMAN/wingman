@@ -1,10 +1,11 @@
 import { create } from 'zustand';
-import { HardwarePermissions, SettingsState } from '../types/settings';
+import { ConnectionMethod, HardwarePermissions, SettingsState } from '../types/settings';
 
 interface SettingsStore extends SettingsState {
   setServerUrl: (url: string) => void;
   setAuthToken: (token: string) => void;
   setAutoConnect: (auto: boolean) => void;
+  setConnectionMethod: (method: ConnectionMethod) => void;
   setPermission: (key: keyof HardwarePermissions, value: boolean) => void;
   setTheme: (theme: 'dark' | 'light' | 'system') => void;
   resetDefaults: () => void;
@@ -22,15 +23,17 @@ const DEFAULT_PERMISSIONS: HardwarePermissions = {
 };
 
 export const useSettingsStore = create<SettingsStore>((set) => ({
-  serverUrl: 'ws://127.0.0.1:8765',
-  authToken: 'hermes-wingman-token-2026',
+  serverUrl: 'wss://hermes-ws.nironman.com',
+  authToken: '',
   autoConnect: true,
+  connectionMethod: 'tui_gateway',
   theme: 'dark',
   permissions: { ...DEFAULT_PERMISSIONS },
 
   setServerUrl: (serverUrl) => set({ serverUrl }),
   setAuthToken: (authToken) => set({ authToken }),
   setAutoConnect: (autoConnect) => set({ autoConnect }),
+  setConnectionMethod: (connectionMethod) => set({ connectionMethod }),
   setPermission: (key, value) =>
     set((state) => ({
       permissions: {
@@ -41,9 +44,10 @@ export const useSettingsStore = create<SettingsStore>((set) => ({
   setTheme: (theme) => set({ theme }),
   resetDefaults: () =>
     set({
-      serverUrl: 'ws://127.0.0.1:8765',
-      authToken: 'hermes-wingman-token-2026',
+      serverUrl: 'wss://hermes-ws.nironman.com',
+      authToken: '',
       autoConnect: true,
+      connectionMethod: 'tui_gateway',
       permissions: { ...DEFAULT_PERMISSIONS },
       theme: 'dark',
     }),

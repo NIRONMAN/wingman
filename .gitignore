@@ -12,3 +12,15 @@ android/app/.cxx/
 ios/build/
 ios/Pods/
 .expo/
+
+# Secrets, Environment & Credentials
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.token
+*.jks
+credentials.json
+release.keystore
+

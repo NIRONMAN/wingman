@@ -9,10 +9,13 @@ export interface HardwarePermissions {
   allowAlarmsAndReminders: boolean;
 }
 
+export type ConnectionMethod = 'tui_gateway' | 'mock';
+
 export interface SettingsState {
   serverUrl: string;
   authToken: string;
   autoConnect: boolean;
+  connectionMethod: ConnectionMethod;
   permissions: HardwarePermissions;
   theme: 'dark' | 'light' | 'system';
 }

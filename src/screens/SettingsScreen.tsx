@@ -14,6 +14,7 @@ import { useSettingsStore } from '../store/useSettingsStore';
 import { useMcpLogStore } from '../store/useMcpLogStore';
 import { useCallStore } from '../store/useCallStore';
 import { HermesClient } from '../services/hermes/client';
+import { HermesProtocol } from '../services/hermes/protocol';
 import { NativeHapticsService } from '../services/mcp/hardware/nativeHaptics';
 import { NativeTorchService } from '../services/mcp/hardware/nativeTorch';
 import { NativeDeviceInfoService } from '../services/mcp/hardware/nativeDeviceInfo';
@@ -28,10 +29,12 @@ export const SettingsScreen: React.FC<Props> = ({ navigation }) => {
     serverUrl,
     authToken,
     autoConnect,
+    connectionMethod,
     permissions,
     setServerUrl,
     setAuthToken,
     setAutoConnect,
+    setConnectionMethod,
     setPermission,
     resetDefaults,
   } = useSettingsStore();
@@ -40,15 +43,19 @@ export const SettingsScreen: React.FC<Props> = ({ navigation }) => {
 
   const [urlInput, setUrlInput] = useState(serverUrl);
   const [tokenInput, setTokenInput] = useState(authToken);
+  const [methodInput, setMethodInput] = useState(connectionMethod || 'tui_gateway');
   const [expandedLogId, setExpandedLogId] = useState<string | null>(null);
+
+  const activeSessionId = HermesClient.getInstance().getSessionId();
 
   const handleSaveConnection = () => {
     setServerUrl(urlInput.trim());
     setAuthToken(tokenInput.trim());
+    setConnectionMethod(methodInput);
     NativeHapticsService.trigger('light');
     HermesClient.getInstance().disconnect();
     HermesClient.getInstance().connect();
-    Alert.alert('Settings Saved', 'Reconnecting to Hermes Node...');
+    Alert.alert('Settings Saved', `Reconnecting via ${methodInput === 'tui_gateway' ? 'TUI Gateway JSON-RPC' : 'Mock Server'}...`);
   };
 
   // Self Tests
@@ -77,12 +84,14 @@ export const SettingsScreen: React.FC<Props> = ({ navigation }) => {
   const handleTestPing = async () => {
     NativeHapticsService.trigger('light');
     try {
-      const pingReq = {
-        jsonrpc: '2.0' as const,
-        id: `ping_${Date.now()}`,
-        method: 'ping',
-        params: { clientTimestamp: Date.now() },
-      };
+      const pingReq = methodInput === 'tui_gateway'
+        ? HermesProtocol.createGatewayPing()
+        : {
+            jsonrpc: '2.0' as const,
+            id: `ping_${Date.now()}`,
+            method: 'ping',
+            params: { clientTimestamp: Date.now() },
+          };
       const response = await HermesClient.getInstance().send(pingReq);
       Alert.alert('Ping Success', `Hermes Node responded: ${JSON.stringify(response)}`);
     } catch (err: any) {
@@ -160,18 +169,93 @@ export const SettingsScreen: React.FC<Props> = ({ navigation }) => {
         <View style={styles.sectionCard}>
           <Text style={styles.sectionTitle}>HERMES CONNECTION PROFILE</Text>
 
+          {/* Connection Method Selector */}
+          <Text style={styles.fieldLabel}>Connection Method</Text>
+          <View style={styles.methodSelector}>
+            <TouchableOpacity
+              style={[styles.methodBtn, methodInput === 'tui_gateway' && styles.methodBtnActive]}
+              onPress={() => setMethodInput('tui_gateway')}
+            >
+              <Text style={[styles.methodBtnText, methodInput === 'tui_gateway' && styles.methodBtnTextActive]}>
+                TUI Gateway (JSON-RPC)
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.methodBtn, methodInput === 'mock' && styles.methodBtnActive]}
+              onPress={() => setMethodInput('mock')}
+            >
+              <Text style={[styles.methodBtnText, methodInput === 'mock' && styles.methodBtnTextActive]}>
+                Mock Server
+              </Text>
+            </TouchableOpacity>
+          </View>
+
+          {methodInput === 'tui_gateway' && (
+            <View style={styles.sessionBox}>
+              <Text style={styles.sessionLabel}>Active Session ID:</Text>
+              <Text style={styles.sessionValue} numberOfLines={1} ellipsizeMode="middle">
+                {activeSessionId || 'Will auto-create upon connection'}
+              </Text>
+            </View>
+          )}
+
+          {/* Presets */}
+          <Text style={styles.fieldLabel}>Quick Presets</Text>
+          <View style={styles.presetRow}>
+            <TouchableOpacity
+              style={styles.presetChip}
+              onPress={() => {
+                setUrlInput('wss://hermes-ws.nironman.com');
+                setMethodInput('tui_gateway');
+              }}
+            >
+              <Text style={styles.presetChipText}>☁️ Cloudflare Prod</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.presetChip}
+              onPress={() => {
+                setUrlInput('ws://192.168.1.11:8765');
+                setMethodInput('tui_gateway');
+              }}
+            >
+              <Text style={styles.presetChipText}>🌐 Ultron LAN</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.presetChip}
+              onPress={() => {
+                setUrlInput('ws://10.0.2.2:8765');
+                setMethodInput('tui_gateway');
+              }}
+            >
+              <Text style={styles.presetChipText}>📱 Emulator Local</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.presetChip}
+              onPress={() => {
+                setUrlInput('ws://127.0.0.1:8765');
+                setMethodInput('mock');
+              }}
+            >
+              <Text style={styles.presetChipText}>🧪 Mock</Text>
+            </TouchableOpacity>
+          </View>
+
           <Text style={styles.fieldLabel}>Hermes Server URL (WebSocket)</Text>
           <TextInput
             style={styles.input}
             value={urlInput}
             onChangeText={setUrlInput}
-            placeholder="ws://127.0.0.1:8765"
+            placeholder="wss://hermes-ws.nironman.com"
             placeholderTextColor="#64748B"
             autoCapitalize="none"
             autoCorrect={false}
           />
 
-          <Text style={styles.fieldLabel}>Auth Bearer Token / API Key</Text>
+          <Text style={styles.fieldLabel}>Auth Bearer Token / API Key (Optional)</Text>
           <TextInput
             style={styles.input}
             value={tokenInput}
@@ -446,6 +530,72 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     marginTop: 10,
     marginBottom: 4,
+  },
+  methodSelector: {
+    flexDirection: 'row',
+    backgroundColor: '#0F172A',
+    borderRadius: 8,
+    padding: 3,
+    gap: 4,
+    marginBottom: 8,
+  },
+  methodBtn: {
+    flex: 1,
+    paddingVertical: 8,
+    paddingHorizontal: 8,
+    borderRadius: 6,
+    alignItems: 'center',
+  },
+  methodBtnActive: {
+    backgroundColor: '#2563EB',
+  },
+  methodBtnText: {
+    color: '#94A3B8',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  methodBtnTextActive: {
+    color: '#FFFFFF',
+    fontWeight: '700',
+  },
+  sessionBox: {
+    backgroundColor: '#0F172A',
+    borderRadius: 8,
+    padding: 10,
+    marginTop: 4,
+    marginBottom: 8,
+    borderWidth: 1,
+    borderColor: '#1E293B',
+  },
+  sessionLabel: {
+    color: '#64748B',
+    fontSize: 11,
+    fontWeight: '600',
+  },
+  sessionValue: {
+    color: '#38BDF8',
+    fontSize: 12,
+    fontFamily: 'monospace',
+    marginTop: 2,
+  },
+  presetRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+    marginBottom: 6,
+  },
+  presetChip: {
+    backgroundColor: '#0F172A',
+    paddingVertical: 5,
+    paddingHorizontal: 10,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#334155',
+  },
+  presetChipText: {
+    color: '#CBD5E1',
+    fontSize: 11,
+    fontWeight: '500',
   },
   input: {
     backgroundColor: '#0F172A',

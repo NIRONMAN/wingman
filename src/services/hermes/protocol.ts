@@ -59,4 +59,31 @@ export class HermesProtocol {
   static isNotification(msg: JsonRpcMessage): msg is JsonRpcNotification {
     return 'method' in msg && !('id' in msg);
   }
+
+  // TUI Gateway JSON-RPC Helpers
+  static createSessionCreate(source: 'tui' | 'cli' | 'gui' = 'tui', id?: string | number): JsonRpcRequest {
+    return this.createRequest('session.create', { source }, id);
+  }
+
+  static createPromptSubmit(
+    sessionId: string,
+    text: string,
+    submissionId?: string,
+    id?: string | number
+  ): JsonRpcRequest {
+    const subId = submissionId || `sub_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+    return this.createRequest(
+      'prompt.submit',
+      {
+        session_id: sessionId,
+        text,
+        submission_id: subId,
+      },
+      id
+    );
+  }
+
+  static createGatewayPing(id?: string | number): JsonRpcRequest {
+    return this.createRequest('gateway.ping', {}, id);
+  }
 }
