@@ -7,19 +7,8 @@
  */
 
 const http = require('http');
-const fs = require('fs');
-const path = require('path');
-const crypto = require('crypto');
 const { WebSocketServer } = require('ws');
 const readline = require('readline');
-
-// Auto-load .env file if present
-try {
-  if (typeof process.loadEnvFile === 'function') {
-    const rootEnv = path.resolve(__dirname, '.env');
-    if (fs.existsSync(rootEnv)) process.loadEnvFile(rootEnv);
-  }
-} catch {}
 
 const PORT = process.env.PORT || 8765;
 const AUTH_TOKEN = (process.env.HERMES_GATEWAY_TOKEN || process.env.WINGMAN_AUTH_TOKEN || '').trim();

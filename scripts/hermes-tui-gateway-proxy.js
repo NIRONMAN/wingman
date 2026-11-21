@@ -17,46 +17,9 @@
  */
 
 const http = require('http');
-const fs = require('fs');
-const path = require('path');
 const crypto = require('crypto');
 const { WebSocketServer, WebSocket: WsClient } = require('ws');
 const { execSync, exec } = require('child_process');
-
-// Auto-load .env file if present in workspace root or current dir
-try {
-  if (typeof process.loadEnvFile === 'function') {
-    const rootEnv = path.resolve(__dirname, '../.env');
-    if (fs.existsSync(rootEnv)) {
-      process.loadEnvFile(rootEnv);
-    } else if (fs.existsSync('.env')) {
-      process.loadEnvFile('.env');
-    }
-  } else {
-    const candidatePaths = [path.resolve(__dirname, '../.env'), path.resolve('.env')];
-    for (const p of candidatePaths) {
-      if (fs.existsSync(p)) {
-        const lines = fs.readFileSync(p, 'utf8').split('\n');
-        for (const line of lines) {
-          const trimmed = line.trim();
-          if (trimmed && !trimmed.startsWith('#')) {
-            const eqIdx = trimmed.indexOf('=');
-            if (eqIdx > 0) {
-              const k = trimmed.substring(0, eqIdx).trim();
-              const v = trimmed.substring(eqIdx + 1).trim().replace(/^['"](.*)['"]$/, '$1');
-              if (!process.env[k]) {
-                process.env[k] = v;
-              }
-            }
-          }
-        }
-        break;
-      }
-    }
-  }
-} catch {
-  // Ignore env loading errors
-}
 
 const PORT = parseInt(process.env.PORT || '8765', 10);
 const HERMES_BIN = process.env.HERMES_BIN || '/home/u0_a205/.local/bin/hermes';

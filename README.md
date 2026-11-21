@@ -153,7 +153,7 @@ Deeply integrated with native mobile OS intents and schedulers:
 
 ### 5. Settings, Security & Diagnostics Center
 - **Connection Configuration**: Configure Hermes WebSocket URL (`ws://...` or `wss://...`), Bearer Auth Token / API Key, and auto-reconnect switch.
-- **256-Bit Cryptographic Token Security**: Protects WebSocket transport and physical MCP actuators using high-entropy 256-bit authentication tokens (`wm_sec_...`). Includes an automated CLI generator (`npm run generate:token`), in-app token generator, clipboard copy button, visibility toggle, and timing-safe constant-time comparison on the gateway.
+- **Secure Token Authentication**: Protects WebSocket transport and physical MCP actuators using bearer token authentication. Configurable directly in the Settings screen with visibility toggle and clipboard paste button.
 - **Granular Hardware Privacy Toggles**: Fine-grained user switches to permit or deny access to camera, flashlight, haptics, simulated calls, notifications, clipboard, and alarms/reminders. Any denied tool call cleanly reports permission rejection to Hermes without crashing.
 - **One-Tap Diagnostic Self-Tests**: Test buttons to verify rescue call overlay, haptic vibrations, torch strobe, telemetry query, system clock alarm, calendar reminder, and server ping.
 - **Live MCP Execution Inspector**: Live stream of incoming tool calls displaying execution timestamps, status badges, latency in milliseconds, arguments, and full JSON responses.
@@ -469,33 +469,14 @@ Generate test coverage reports:
 npm run test:coverage
 ```
 
-### Secure Token Generation & Gateway Pairing
+### Server Pairing & Authentication
 
-Wingman secures all WebSocket channels and physical MCP actuator invocations with 256-bit cryptographic bearer tokens.
+Wingman secures all WebSocket channels and physical MCP actuator invocations with token-based authentication:
 
-1. **Generate a Secure 256-bit Token**:
-   ```bash
-   # Prints a freshly minted token with configuration instructions
-   npm run generate:token
-
-   # Or generate and automatically write it to your .env file
-   npm run generate:token -- --write-env
-   ```
-
-2. **Configure Hermes Gateway (`.env`)**:
-   ```env
-   PORT=8765
-   HERMES_BIN=/home/u0_a205/.local/bin/hermes
-   WINGMAN_AUTH_TOKEN=wm_sec_73b3c1d01137a28577233166e4c2e7c469a56989345020df78f959cf9d25604d
-   HERMES_GATEWAY_TOKEN=wm_sec_73b3c1d01137a28577233166e4c2e7c469a56989345020df78f959cf9d25604d
-   ```
-
-3. **In the Wingman Mobile App**:
-   - Open **Settings**.
-   - Paste the token into **Auth Bearer Token** (or tap **🎲 Generate Token** and use **📋 Copy Token**).
-   - Tap **Save & Reconnect**.
-
----
+1. Obtain your authentication token from your Hermes server or gateway administrator.
+2. In the Wingman mobile app, navigate to **Settings**.
+3. Under **Auth Bearer Token / API Key**, paste your token (or tap **📋 Paste Token**).
+4. Tap **Save & Reconnect** to pair the app with your server.
 
 ---
 

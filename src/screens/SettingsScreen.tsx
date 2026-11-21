@@ -19,7 +19,7 @@ import { NativeHapticsService } from '../services/mcp/hardware/nativeHaptics';
 import { NativeTorchService } from '../services/mcp/hardware/nativeTorch';
 import { NativeDeviceInfoService } from '../services/mcp/hardware/nativeDeviceInfo';
 import { NativeClipboardService } from '../services/mcp/hardware/nativeClipboard';
-import { generateSecureToken, isValidSecureToken } from '../utils/security';
+import { isValidSecureToken } from '../utils/security';
 import { McpRegistry } from '../services/mcp/registry';
 
 interface Props {
@@ -51,24 +51,19 @@ export const SettingsScreen: React.FC<Props> = ({ navigation }) => {
 
   const activeSessionId = HermesClient.getInstance().getSessionId();
 
-  const handleGenerateToken = () => {
-    const newToken = generateSecureToken();
-    setTokenInput(newToken);
-    NativeHapticsService.trigger('light');
-    Alert.alert(
-      '🔑 Secure Token Generated',
-      'Generated a cryptographically secure 256-bit token. Tap "Save & Reconnect" to apply, and configure the same token in your Hermes gateway (.env).'
-    );
+  const handlePasteToken = async () => {
+    const text = await NativeClipboardService.getString();
+    if (text && text.trim()) {
+      setTokenInput(text.trim());
+      NativeHapticsService.trigger('light');
+    } else {
+      Alert.alert('Clipboard Empty', 'No token found in clipboard.');
+    }
   };
 
-  const handleCopyToken = async () => {
-    if (!tokenInput.trim()) {
-      Alert.alert('No Token', 'Enter or generate a token first.');
-      return;
-    }
-    await NativeClipboardService.setString(tokenInput.trim());
+  const handleClearToken = () => {
+    setTokenInput('');
     NativeHapticsService.trigger('light');
-    Alert.alert('📋 Copied to Clipboard', 'Auth token copied. Paste it into your Hermes Gateway (.env).');
   };
 
   const handleSaveConnection = () => {
@@ -283,7 +278,7 @@ export const SettingsScreen: React.FC<Props> = ({ navigation }) => {
             {tokenInput.trim() ? (
               <View style={[styles.secureBadge, !isValidSecureToken(tokenInput) && styles.warningBadge]}>
                 <Text style={[styles.secureBadgeText, !isValidSecureToken(tokenInput) && styles.warningBadgeText]}>
-                  {isValidSecureToken(tokenInput) ? '🔒 256-bit Secure' : '⚠️ Short Token'}
+                  {isValidSecureToken(tokenInput) ? '🔒 Configured' : '⚠️ Custom'}
                 </Text>
               </View>
             ) : (
@@ -298,7 +293,7 @@ export const SettingsScreen: React.FC<Props> = ({ navigation }) => {
               style={[styles.input, styles.tokenInputField]}
               value={tokenInput}
               onChangeText={setTokenInput}
-              placeholder="wm_sec_..."
+              placeholder="Paste token from Hermes server"
               placeholderTextColor="#64748B"
               secureTextEntry={!showToken}
               autoCapitalize="none"
@@ -316,20 +311,22 @@ export const SettingsScreen: React.FC<Props> = ({ navigation }) => {
           <View style={styles.tokenActionsRow}>
             <TouchableOpacity
               style={styles.tokenActionBtn}
-              onPress={handleGenerateToken}
+              onPress={handlePasteToken}
             >
-              <Text style={styles.tokenActionBtnText}>🎲 Generate Token</Text>
+              <Text style={styles.tokenActionBtnText}>📋 Paste Token</Text>
             </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.tokenActionBtn}
-              onPress={handleCopyToken}
-            >
-              <Text style={styles.tokenActionBtnText}>📋 Copy Token</Text>
-            </TouchableOpacity>
+            {tokenInput.trim() ? (
+              <TouchableOpacity
+                style={[styles.tokenActionBtn, styles.tokenClearBtn]}
+                onPress={handleClearToken}
+              >
+                <Text style={[styles.tokenActionBtnText, styles.tokenClearBtnText]}>✕ Clear</Text>
+              </TouchableOpacity>
+            ) : null}
           </View>
 
           <Text style={styles.tokenHelpText}>
-            Secures WebSocket transport and protects physical MCP actuators against unauthorized calls.
+            Enter the authentication token configured on your Hermes server.
           </Text>
 
           <View style={styles.switchRow}>
@@ -890,6 +887,13 @@ const styles = StyleSheet.create({
     color: '#38BDF8',
     fontSize: 12,
     fontWeight: '600',
+  },
+  tokenClearBtn: {
+    flex: 0.4,
+    borderColor: '#475569',
+  },
+  tokenClearBtnText: {
+    color: '#94A3B8',
   },
   tokenHelpText: {
     color: '#64748B',
