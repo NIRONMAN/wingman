@@ -4,7 +4,7 @@ import { HermesClient } from '../src/services/hermes/client';
 import { HermesProtocol } from '../src/services/hermes/protocol';
 import { useChatStore } from '../src/store/useChatStore';
 import { useCallStore } from '../src/store/useCallStore';
-import { useSettingsStore } from '../src/store/useSettingsStore';
+import { useSettingsStore, DEFAULT_SECURE_AUTH_TOKEN } from '../src/store/useSettingsStore';
 
 describe('Hermes E2E Integration', () => {
   let server: http.Server;
@@ -182,7 +182,7 @@ describe('Hermes E2E Integration', () => {
 
   it('connects to TUI Gateway and streams prompt response', async () => {
     useSettingsStore.getState().setServerUrl(`ws://127.0.0.1:${TEST_PORT}`);
-    useSettingsStore.getState().setAuthToken('hermes-wingman-token-2026');
+    useSettingsStore.getState().setAuthToken(DEFAULT_SECURE_AUTH_TOKEN);
     useSettingsStore.getState().setConnectionMethod('tui_gateway');
     HermesClient.getInstance().connect();
 
@@ -245,7 +245,7 @@ describe('Hermes E2E Integration', () => {
     ).toBe(true);
 
     // Restore valid token and reconnect for remaining tests
-    useSettingsStore.getState().setAuthToken('hermes-wingman-token-2026');
+    useSettingsStore.getState().setAuthToken(DEFAULT_SECURE_AUTH_TOKEN);
     HermesClient.getInstance().connect();
     await new Promise((resolve) => {
       const interval = setInterval(() => {

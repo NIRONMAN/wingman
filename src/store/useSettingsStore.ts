@@ -22,9 +22,11 @@ const DEFAULT_PERMISSIONS: HardwarePermissions = {
   allowAlarmsAndReminders: true,
 };
 
+export const DEFAULT_SECURE_AUTH_TOKEN = 'wm_sec_73b3c1d01137a28577233166e4c2e7c469a56989345020df78f959cf9d25604d';
+
 export const useSettingsStore = create<SettingsStore>((set) => ({
   serverUrl: 'wss://hermes-ws.nironman.com',
-  authToken: '',
+  authToken: DEFAULT_SECURE_AUTH_TOKEN,
   autoConnect: true,
   connectionMethod: 'tui_gateway',
   theme: 'dark',
@@ -45,7 +47,7 @@ export const useSettingsStore = create<SettingsStore>((set) => ({
   resetDefaults: () =>
     set({
       serverUrl: 'wss://hermes-ws.nironman.com',
-      authToken: '',
+      authToken: DEFAULT_SECURE_AUTH_TOKEN,
       autoConnect: true,
       connectionMethod: 'tui_gateway',
       permissions: { ...DEFAULT_PERMISSIONS },

@@ -10,6 +10,7 @@
     "test:coverage": "jest --coverage",
     "typecheck": "tsc --noEmit",
     "mock-server": "node test-hermes-server.js",
+    "generate:token": "node scripts/generate-token.js",
     "postinstall": "node scripts/fix-expo-hmr.js"
   },
   "dependencies": {

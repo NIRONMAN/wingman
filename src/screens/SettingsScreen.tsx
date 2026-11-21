@@ -18,6 +18,8 @@ import { HermesProtocol } from '../services/hermes/protocol';
 import { NativeHapticsService } from '../services/mcp/hardware/nativeHaptics';
 import { NativeTorchService } from '../services/mcp/hardware/nativeTorch';
 import { NativeDeviceInfoService } from '../services/mcp/hardware/nativeDeviceInfo';
+import { NativeClipboardService } from '../services/mcp/hardware/nativeClipboard';
+import { generateSecureToken, isValidSecureToken } from '../utils/security';
 import { McpRegistry } from '../services/mcp/registry';
 
 interface Props {
@@ -44,9 +46,30 @@ export const SettingsScreen: React.FC<Props> = ({ navigation }) => {
   const [urlInput, setUrlInput] = useState(serverUrl);
   const [tokenInput, setTokenInput] = useState(authToken);
   const [methodInput, setMethodInput] = useState(connectionMethod || 'tui_gateway');
+  const [showToken, setShowToken] = useState(false);
   const [expandedLogId, setExpandedLogId] = useState<string | null>(null);
 
   const activeSessionId = HermesClient.getInstance().getSessionId();
+
+  const handleGenerateToken = () => {
+    const newToken = generateSecureToken();
+    setTokenInput(newToken);
+    NativeHapticsService.trigger('light');
+    Alert.alert(
+      '🔑 Secure Token Generated',
+      'Generated a cryptographically secure 256-bit token. Tap "Save & Reconnect" to apply, and configure the same token in your Hermes gateway (.env).'
+    );
+  };
+
+  const handleCopyToken = async () => {
+    if (!tokenInput.trim()) {
+      Alert.alert('No Token', 'Enter or generate a token first.');
+      return;
+    }
+    await NativeClipboardService.setString(tokenInput.trim());
+    NativeHapticsService.trigger('light');
+    Alert.alert('📋 Copied to Clipboard', 'Auth token copied. Paste it into your Hermes Gateway (.env).');
+  };
 
   const handleSaveConnection = () => {
     setServerUrl(urlInput.trim());
@@ -255,15 +278,59 @@ export const SettingsScreen: React.FC<Props> = ({ navigation }) => {
             autoCorrect={false}
           />
 
-          <Text style={styles.fieldLabel}>Auth Bearer Token / API Key (Optional)</Text>
-          <TextInput
-            style={styles.input}
-            value={tokenInput}
-            onChangeText={setTokenInput}
-            placeholder="hermes-secret-token"
-            placeholderTextColor="#64748B"
-            secureTextEntry
-          />
+          <View style={styles.tokenHeaderRow}>
+            <Text style={styles.fieldLabel}>Auth Bearer Token / API Key</Text>
+            {tokenInput.trim() ? (
+              <View style={[styles.secureBadge, !isValidSecureToken(tokenInput) && styles.warningBadge]}>
+                <Text style={[styles.secureBadgeText, !isValidSecureToken(tokenInput) && styles.warningBadgeText]}>
+                  {isValidSecureToken(tokenInput) ? '🔒 256-bit Secure' : '⚠️ Short Token'}
+                </Text>
+              </View>
+            ) : (
+              <View style={styles.unsecuredBadge}>
+                <Text style={styles.unsecuredBadgeText}>🔓 Unsecured</Text>
+              </View>
+            )}
+          </View>
+
+          <View style={styles.tokenInputRow}>
+            <TextInput
+              style={[styles.input, styles.tokenInputField]}
+              value={tokenInput}
+              onChangeText={setTokenInput}
+              placeholder="wm_sec_..."
+              placeholderTextColor="#64748B"
+              secureTextEntry={!showToken}
+              autoCapitalize="none"
+              autoCorrect={false}
+            />
+            <TouchableOpacity
+              style={styles.tokenToggleBtn}
+              onPress={() => setShowToken(!showToken)}
+              accessibilityLabel="Toggle token visibility"
+            >
+              <Text style={styles.tokenToggleBtnText}>{showToken ? '🙈' : '👁️'}</Text>
+            </TouchableOpacity>
+          </View>
+
+          <View style={styles.tokenActionsRow}>
+            <TouchableOpacity
+              style={styles.tokenActionBtn}
+              onPress={handleGenerateToken}
+            >
+              <Text style={styles.tokenActionBtnText}>🎲 Generate Token</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.tokenActionBtn}
+              onPress={handleCopyToken}
+            >
+              <Text style={styles.tokenActionBtnText}>📋 Copy Token</Text>
+            </TouchableOpacity>
+          </View>
+
+          <Text style={styles.tokenHelpText}>
+            Secures WebSocket transport and protects physical MCP actuators against unauthorized calls.
+          </Text>
 
           <View style={styles.switchRow}>
             <Text style={styles.switchLabel}>Auto-reconnect on launch</Text>
@@ -737,5 +804,98 @@ const styles = StyleSheet.create({
     color: '#EF4444',
     fontSize: 11,
     marginTop: 4,
+  },
+  tokenHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginTop: 12,
+    marginBottom: 4,
+  },
+  secureBadge: {
+    backgroundColor: '#064E3B',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#059669',
+  },
+  secureBadgeText: {
+    color: '#34D399',
+    fontSize: 10,
+    fontWeight: '700',
+  },
+  warningBadge: {
+    backgroundColor: '#78350F',
+    borderColor: '#D97706',
+  },
+  warningBadgeText: {
+    color: '#FCD34D',
+  },
+  unsecuredBadge: {
+    backgroundColor: '#450A0A',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#DC2626',
+  },
+  unsecuredBadgeText: {
+    color: '#FCA5A5',
+    fontSize: 10,
+    fontWeight: '700',
+  },
+  tokenInputRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  tokenInputField: {
+    flex: 1,
+    marginBottom: 0,
+    fontFamily: 'monospace',
+    fontSize: 12,
+  },
+  tokenToggleBtn: {
+    backgroundColor: '#1E293B',
+    height: 48,
+    width: 48,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#334155',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  tokenToggleBtnText: {
+    fontSize: 18,
+  },
+  tokenActionsRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginTop: 8,
+    marginBottom: 4,
+  },
+  tokenActionBtn: {
+    flex: 1,
+    backgroundColor: '#1E293B',
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#334155',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  tokenActionBtnText: {
+    color: '#38BDF8',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  tokenHelpText: {
+    color: '#64748B',
+    fontSize: 11,
+    lineHeight: 15,
+    marginTop: 2,
+    marginBottom: 12,
   },
 });

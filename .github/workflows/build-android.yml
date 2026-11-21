@@ -17,6 +17,9 @@ jobs:
   build-apk:
     name: Build & Package Android APK
     runs-on: ubuntu-latest
+    env:
+      ANDROID_HOME: /usr/local/lib/android/sdk
+      ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
 
     steps:
       - name: Checkout Repository
@@ -48,8 +51,6 @@ jobs:
         run: chmod +x android/gradlew
 
       - name: Build Release APK
-        env:
-          ANDROID_HOME: /usr/local/lib/android/sdk
         run: |
           cd android
           ./gradlew assembleRelease --no-daemon --stacktrace
@@ -62,13 +63,11 @@ jobs:
           retention-days: 14
 
       - name: Build Debug APK
-        if: always()
         run: |
           cd android
           ./gradlew assembleDebug --no-daemon --stacktrace
 
       - name: Upload Debug APK Artifact
-        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: wingman-debug-apk
