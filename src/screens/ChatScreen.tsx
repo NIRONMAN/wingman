@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import {
   View,
   Text,
+  Image,
   StyleSheet,
   FlatList,
   TextInput,
@@ -69,9 +70,11 @@ export const ChatScreen: React.FC<Props> = ({ navigation }) => {
       {/* Header */}
       <View style={styles.header}>
         <View style={styles.headerLeft}>
-          <View style={styles.hermesAvatar}>
-            <Text style={styles.hermesAvatarText}>H</Text>
-          </View>
+          <Image
+            source={require('../../assets/icon.png')}
+            style={styles.hermesAvatarImage}
+            resizeMode="cover"
+          />
           <View>
             <Text style={styles.title}>Hermes Wingman</Text>
             <Text style={styles.subtitle}>Physical MCP Node & Companion</Text>
@@ -168,19 +171,14 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
   },
-  hermesAvatar: {
+  hermesAvatarImage: {
     width: 38,
     height: 38,
     borderRadius: 19,
-    backgroundColor: '#2563EB',
-    alignItems: 'center',
-    justifyContent: 'center',
     marginRight: 10,
-  },
-  hermesAvatarText: {
-    color: '#FFFFFF',
-    fontWeight: '800',
-    fontSize: 18,
+    backgroundColor: '#080C14',
+    borderWidth: 1,
+    borderColor: 'rgba(56, 189, 248, 0.35)',
   },
   title: {
     color: '#F8FAFC',

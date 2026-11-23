@@ -1,0 +1,50 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1254 1254" width="100%" height="100%">
+  <defs>
+    <!-- Background Gradient -->
+    <radialGradient id="bgGlow" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#0E1E38" stop-opacity="0.8"/>
+      <stop offset="100%" stop-color="#080C14" stop-opacity="1"/>
+    </radialGradient>
+
+    <!-- Wing Linear Gradient -->
+    <linearGradient id="wingGradient" x1="0%" y1="100%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#196CFD"/>
+      <stop offset="30%" stop-color="#1B85FE"/>
+      <stop offset="70%" stop-color="#1894FD"/>
+      <stop offset="100%" stop-color="#0AF9FF"/>
+    </linearGradient>
+
+    <!-- Orb Gradient & Glow -->
+    <radialGradient id="orbGradient" cx="40%" cy="40%" r="60%">
+      <stop offset="0%" stop-color="#70F3FF"/>
+      <stop offset="70%" stop-color="#06CCFC"/>
+      <stop offset="100%" stop-color="#0284C7"/>
+    </radialGradient>
+
+    <filter id="orbGlow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="16" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+
+  <!-- Background Canvas -->
+  <rect width="1254" height="1254" rx="0" fill="#080C14"/>
+
+  <!-- Top Swept Wing and Chevron Frame -->
+  <path d="M 1045,396 L 666,777 L 641,794 L 598,811 L 521,824 L 510,823 L 798,534 L 305,533 C 275,525 242,506 211,475 C 192,447 185,442 205,440 L 853,446 C 901,438 980,418 1045,396 Z"
+        fill="url(#wingGradient)"/>
+
+  <!-- Middle Aerodynamic Slat -->
+  <path d="M 299,574 L 718,575 L 637,656 L 389,654 C 362,645 332,626 310,604 C 290,575 292,574 299,574 Z"
+        fill="url(#wingGradient)"/>
+
+  <!-- Lower Triangle Slat -->
+  <path d="M 408,692 L 601,692 L 502,791 Z"
+        fill="url(#wingGradient)"/>
+
+  <!-- Satellite Companion / Physical Node Orb -->
+  <circle cx="984" cy="599" r="51" fill="url(#orbGradient)" filter="url(#orbGlow)"/>
+</svg>
