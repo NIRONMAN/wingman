@@ -37,7 +37,8 @@ class AlarmReminderModule(private val reactContext: ReactApplicationContext) :
             } else {
                 "Wingman Alarm"
             }
-            val skipUi = if (options.hasKey("skipUi")) options.getBoolean("skipUi") else false
+            // Non-system apps on modern Android (10+) throw SecurityException if EXTRA_SKIP_UI is true
+            val skipUi = false
             val vibrate = if (options.hasKey("vibrate")) options.getBoolean("vibrate") else true
 
             val intent = Intent(AlarmClock.ACTION_SET_ALARM).apply {
@@ -85,7 +86,7 @@ class AlarmReminderModule(private val reactContext: ReactApplicationContext) :
             } else {
                 "Wingman Timer"
             }
-            val skipUi = if (options.hasKey("skipUi")) options.getBoolean("skipUi") else false
+            val skipUi = false
 
             val intent = Intent(AlarmClock.ACTION_SET_TIMER).apply {
                 putExtra(AlarmClock.EXTRA_LENGTH, lengthSeconds)

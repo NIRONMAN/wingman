@@ -26,6 +26,7 @@ export interface McpContentItem {
   text?: string;
   data?: string;
   mimeType?: string;
+  uri?: string;
 }
 
 export interface McpToolResult {

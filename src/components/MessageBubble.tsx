@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import { View, Text, StyleSheet, Image } from 'react-native';
 import { ChatMessage } from '../types/chat';
 import { ToolExecutionBadge } from './ToolExecutionBadge';
 
@@ -75,6 +75,22 @@ export const MessageBubble: React.FC<Props> = ({ message }) => {
                 <Text style={styles.streamingText}>Streaming...</Text>
               </View>
             )}
+          </View>
+        )}
+
+        {message.imageAttachment && (
+          <View style={styles.imageCard}>
+            <Image
+              source={{
+                uri:
+                  message.imageAttachment.uri ||
+                  (message.imageAttachment.base64
+                    ? `data:${message.imageAttachment.mimeType || 'image/jpeg'};base64,${message.imageAttachment.base64}`
+                    : undefined),
+              }}
+              style={styles.attachedImage}
+              resizeMode="cover"
+            />
           </View>
         )}
 
@@ -197,6 +213,19 @@ const styles = StyleSheet.create({
     fontFamily: 'monospace',
     paddingHorizontal: 4,
     borderRadius: 4,
+  },
+  imageCard: {
+    borderRadius: 12,
+    overflow: 'hidden',
+    marginVertical: 6,
+    backgroundColor: '#0F172A',
+    borderWidth: 1,
+    borderColor: '#334155',
+  },
+  attachedImage: {
+    width: 220,
+    height: 160,
+    borderRadius: 11,
   },
   voiceMemoCard: {
     flexDirection: 'row',

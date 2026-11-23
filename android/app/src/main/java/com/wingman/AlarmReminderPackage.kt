@@ -9,7 +9,11 @@ import com.facebook.react.uimanager.ViewManager
 
 class AlarmReminderPackage : ReactPackage {
     override fun createNativeModules(reactContext: ReactApplicationContext): List<NativeModule> {
-        return listOf(AlarmReminderModule(reactContext))
+        return listOf(
+            AlarmReminderModule(reactContext),
+            TorchModule(reactContext),
+            NotificationModule(reactContext)
+        )
     }
 
     override fun createViewManagers(reactContext: ReactApplicationContext): List<ViewManager<View, ReactShadowNode<*>>> {

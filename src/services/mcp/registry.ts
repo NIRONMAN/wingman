@@ -160,6 +160,7 @@ export class McpRegistry {
                 type: 'image',
                 data: snapshot.base64Data,
                 mimeType: snapshot.mimeType,
+                uri: snapshot.uri,
               },
             ],
           };

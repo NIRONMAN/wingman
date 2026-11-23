@@ -1,9 +1,8 @@
 /**
  * Hermes TUI Gateway Proxy / Middleman Server
  * 
- * Sits on the Ultron host (0.0.0.0:8765) and bridges external client connections
- * (such as the Wingman mobile app or emulator) to the local Hermes Gateway
- * via the official TUI Gateway JSON-RPC protocol (hermes-gateway-v1).
+ * Bridges external client connections (such as the Wingman mobile app or emulator)
+ * to the local Hermes Gateway via the official TUI Gateway JSON-RPC protocol (hermes-gateway-v1).
  *
  * Features:
  * - Token-based authentication via URL query param (?token=...), Authorization header,
@@ -17,13 +16,80 @@
  */
 
 const http = require('http');
+const fs = require('fs');
+const path = require('path');
+const os = require('os');
 const crypto = require('crypto');
 const { WebSocketServer, WebSocket: WsClient } = require('ws');
 const { execSync, exec } = require('child_process');
 
+// Auto-load .env file if present
+function loadEnv() {
+  const envPaths = [
+    path.resolve(process.cwd(), '.env'),
+    path.resolve(__dirname, '.env'),
+    path.resolve(__dirname, '../.env'),
+  ];
+  for (const envFile of envPaths) {
+    if (fs.existsSync(envFile)) {
+      try {
+        const content = fs.readFileSync(envFile, 'utf8');
+        for (const line of content.split('\n')) {
+          const trimmed = line.trim();
+          if (!trimmed || trimmed.startsWith('#')) continue;
+          const idx = trimmed.indexOf('=');
+          if (idx !== -1) {
+            const key = trimmed.substring(0, idx).trim();
+            let val = trimmed.substring(idx + 1).trim();
+            if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'"))) {
+              val = val.substring(1, val.length - 1);
+            }
+            if (!process.env[key]) process.env[key] = val;
+          }
+        }
+        break;
+      } catch {}
+    }
+  }
+}
+loadEnv();
+
 const PORT = parseInt(process.env.PORT || '8765', 10);
-const HERMES_BIN = process.env.HERMES_BIN || '/home/u0_a205/.local/bin/hermes';
-const AUTH_TOKEN = (process.env.HERMES_GATEWAY_TOKEN || process.env.WINGMAN_AUTH_TOKEN || '').trim();
+
+// Resolve Hermes binary
+function resolveHermesBin() {
+  if (process.env.HERMES_BIN && fs.existsSync(process.env.HERMES_BIN)) {
+    return process.env.HERMES_BIN;
+  }
+  const candidates = [
+    path.join(os.homedir(), '.local/bin/hermes'),
+    '/home/niro/.local/bin/hermes',
+    '/home/u0_a205/.local/bin/hermes',
+    '/usr/local/bin/hermes',
+    '/usr/bin/hermes',
+  ];
+  for (const candidate of candidates) {
+    if (fs.existsSync(candidate)) return candidate;
+  }
+  return 'hermes';
+}
+
+const HERMES_BIN = resolveHermesBin();
+
+// Extract allowed authentication tokens
+const rawTokens = [
+  process.env.HERMES_GATEWAY_TOKEN,
+  process.env.WINGMAN_AUTH_TOKEN,
+  process.env.AUTH_TOKEN,
+].filter(Boolean);
+
+const validTokens = new Set();
+for (const raw of rawTokens) {
+  for (const t of raw.split(/[\s,]+/)) {
+    const trimmed = t.trim();
+    if (trimmed) validTokens.add(trimmed);
+  }
+}
 
 // Native WebSocket in Node 21+ or fallback to ws package
 const SocketClient = typeof global.WebSocket !== 'undefined' ? global.WebSocket : WsClient;
@@ -77,15 +143,19 @@ function extractAuthToken(req) {
  * Uses timing-safe constant-time comparison to prevent timing attacks
  */
 function isAuthorized(req) {
-  if (!AUTH_TOKEN) return true; // Auth disabled if token is explicitly empty
+  if (validTokens.size === 0) return true; // Auth disabled if no token is configured
   const clientToken = extractAuthToken(req);
   if (!clientToken) return false;
 
   try {
     const clientBuf = Buffer.from(clientToken);
-    const authBuf = Buffer.from(AUTH_TOKEN);
-    if (clientBuf.length !== authBuf.length) return false;
-    return crypto.timingSafeEqual(clientBuf, authBuf);
+    for (const expected of validTokens) {
+      const expectedBuf = Buffer.from(expected);
+      if (clientBuf.length === expectedBuf.length && crypto.timingSafeEqual(clientBuf, expectedBuf)) {
+        return true;
+      }
+    }
+    return false;
   } catch {
     return false;
   }
@@ -99,14 +169,15 @@ const server = http.createServer((req, res) => {
 
   const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
 
-  // Public health check endpoint for Cloudflare Tunnel / monitoring
+  // Public health check endpoint for Cloudflare Tunnel / monitoring / checks
   if (url.pathname === '/health') {
     res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
     res.end(JSON.stringify({
       status: 'online',
       protocol: 'tui_gateway_jsonrpc',
+      host: os.hostname(),
       port: PORT,
-      authRequired: Boolean(AUTH_TOKEN),
+      authRequired: validTokens.size > 0,
       activeClients: clientConnections.size,
       uptimeSeconds: Math.floor(process.uptime()),
       timestamp: new Date().toISOString(),
@@ -129,12 +200,64 @@ const server = http.createServer((req, res) => {
     res.end(JSON.stringify({
       status: 'online',
       protocol: 'tui_gateway_jsonrpc',
+      host: os.hostname(),
       port: PORT,
-      authRequired: Boolean(AUTH_TOKEN),
+      hermesBin: HERMES_BIN,
+      authRequired: validTokens.size > 0,
       activeClients: clientConnections.size,
       uptimeSeconds: Math.floor(process.uptime()),
       timestamp: new Date().toISOString(),
     }));
+    return;
+  }
+
+  // MCP tool call dispatch endpoint for Hermes / CLI
+  if (url.pathname === '/api/mcp/call' && req.method === 'POST') {
+    let body = '';
+    req.on('data', (chunk) => (body += chunk));
+    req.on('end', () => {
+      try {
+        const payload = JSON.parse(body);
+        const { tool, args } = payload;
+
+        const activeClients = Array.from(clientConnections).filter((ws) => ws.readyState === 1);
+        const activeClient = activeClients[activeClients.length - 1];
+
+        if (!activeClient) {
+          res.writeHead(503, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+          res.end(JSON.stringify({ isError: true, content: [{ type: 'text', text: 'No Wingman mobile device currently connected' }] }));
+          return;
+        }
+
+        const callId = `mcp_call_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+        const reqMsg = {
+          jsonrpc: '2.0',
+          id: callId,
+          method: 'tools/call',
+          params: {
+            name: tool,
+            arguments: args || {},
+          },
+        };
+
+        const timeout = setTimeout(() => {
+          pendingMcpCalls.delete(callId);
+          res.writeHead(504, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+          res.end(JSON.stringify({ isError: true, content: [{ type: 'text', text: 'Tool execution timed out on mobile device' }] }));
+        }, 15000);
+
+        pendingMcpCalls.set(callId, (resMsg) => {
+          clearTimeout(timeout);
+          res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+          res.end(JSON.stringify(resMsg));
+        });
+
+        activeClient.send(JSON.stringify(reqMsg));
+      } catch (err) {
+        res.writeHead(400, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+        res.end(JSON.stringify({ isError: true, content: [{ type: 'text', text: err.message }] }));
+      }
+    });
     return;
   }
 
@@ -145,6 +268,7 @@ const server = http.createServer((req, res) => {
 // WebSocket Server
 const wss = new WebSocketServer({ server });
 const clientConnections = new Set();
+const pendingMcpCalls = new Map();
 let connectionCounter = 1;
 
 /**
@@ -152,7 +276,7 @@ let connectionCounter = 1;
  */
 function getHermesAttachInfo() {
   return new Promise((resolve, reject) => {
-    exec(`${HERMES_BIN} gateway attach --json --start`, { timeout: 15000 }, (err, stdout, stderr) => {
+    exec(`"${HERMES_BIN}" gateway attach --json --start`, { timeout: 30000 }, (err, stdout, stderr) => {
       if (err) {
         return reject(new Error(`Failed to attach to Hermes gateway: ${stderr || err.message}`));
       }
@@ -224,6 +348,14 @@ wss.on('connection', async (clientWs, req) => {
     try {
       const msg = JSON.parse(raw);
 
+      // Handle response to tools/call from mobile device
+      if (msg.id && pendingMcpCalls.has(msg.id)) {
+        const callback = pendingMcpCalls.get(msg.id);
+        pendingMcpCalls.delete(msg.id);
+        callback(msg.result || msg.error || msg);
+        return;
+      }
+
       // Handle legacy ping directly if needed
       if (msg.method === 'ping') {
         const pong = {
@@ -243,6 +375,24 @@ wss.on('connection', async (clientWs, req) => {
       if (msg.method === 'prompt.submit' && msg.params) {
         if (!msg.params.submission_id && !msg.params.input_id) {
           msg.params.submission_id = `sub_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
+        }
+
+        if (msg.params.imageBase64) {
+          try {
+            const imgBuf = Buffer.from(msg.params.imageBase64, 'base64');
+            const imgPath = `/tmp/wingman_snapshot_${Date.now()}.jpg`;
+            fs.writeFileSync(imgPath, imgBuf);
+            console.log(`📸 [Proxy #${connId}] Saved incoming image snapshot to ${imgPath} (${imgBuf.length} bytes)`);
+            msg.params.text = (msg.params.text || '') + `\n\n[Live Camera Snapshot Saved to ${imgPath} (${imgBuf.length} bytes)]\nYou can inspect this image file to see what was captured.`;
+            delete msg.params.imageBase64;
+            delete msg.params.imageMimeType;
+          } catch (imgErr) {
+            console.error(`⚠️ [Proxy #${connId}] Failed to save snapshot image:`, imgErr.message);
+          }
+        }
+
+        if (msg.params.text && !msg.params.text.includes('[Wingman Companion Active]')) {
+          msg.params.text += `\n\n[Wingman Companion Active: You have access to physical tools on the user's connected phone via MCP: toggle_flashlight, simulate_call (HIGH URGENCY/CRITICAL voice calls), send_notification (MODERATE URGENCY heads-up notifications), set_alarm (Clock app), capture_snapshot, get_device_telemetry]`;
         }
       }
 
@@ -317,13 +467,15 @@ wss.on('connection', async (clientWs, req) => {
 });
 
 server.listen(PORT, '0.0.0.0', () => {
-  const maskedToken = AUTH_TOKEN
-    ? `${AUTH_TOKEN.substring(0, 10)}...${AUTH_TOKEN.substring(Math.max(0, AUTH_TOKEN.length - 4))}`
+  const tokenList = Array.from(validTokens);
+  const tokenSummary = tokenList.length > 0
+    ? `${tokenList.length} configured (${tokenList.map(t => `${t.substring(0, 10)}...${t.substring(Math.max(0, t.length - 4))}`).join(', ')})`
     : 'None (Auth Disabled)';
   console.log(`=======================================================`);
   console.log(`🚀 HERMES TUI GATEWAY PROXY RUNNING on 0.0.0.0:${PORT}`);
+  console.log(`   Host                 : ${os.hostname()}`);
   console.log(`   Client WebSocket URL : ws://0.0.0.0:${PORT}/?token=***`);
-  console.log(`   Auth Active          : ${AUTH_TOKEN ? `YES (${maskedToken})` : 'NO (Disabled)'}`);
+  console.log(`   Auth Active          : ${validTokens.size > 0 ? `YES (${tokenSummary})` : 'NO (Disabled)'}`);
   console.log(`   Health Status        : http://0.0.0.0:${PORT}/health`);
   console.log(`   Hermes Binary        : ${HERMES_BIN}`);
   console.log(`=======================================================\n`);

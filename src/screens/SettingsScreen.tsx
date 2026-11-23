@@ -9,6 +9,7 @@ import {
   TouchableOpacity,
   SafeAreaView,
   Alert,
+  ActivityIndicator,
 } from 'react-native';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useMcpLogStore } from '../store/useMcpLogStore';
@@ -45,9 +46,10 @@ export const SettingsScreen: React.FC<Props> = ({ navigation }) => {
 
   const [urlInput, setUrlInput] = useState(serverUrl);
   const [tokenInput, setTokenInput] = useState(authToken);
-  const [methodInput, setMethodInput] = useState(connectionMethod || 'tui_gateway');
   const [showToken, setShowToken] = useState(false);
   const [expandedLogId, setExpandedLogId] = useState<string | null>(null);
+  const [saveStatus, setSaveStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
+  const [saveErrorMessage, setSaveErrorMessage] = useState<string | null>(null);
 
   const activeSessionId = HermesClient.getInstance().getSessionId();
 
@@ -66,14 +68,36 @@ export const SettingsScreen: React.FC<Props> = ({ navigation }) => {
     NativeHapticsService.trigger('light');
   };
 
-  const handleSaveConnection = () => {
-    setServerUrl(urlInput.trim());
-    setAuthToken(tokenInput.trim());
-    setConnectionMethod(methodInput);
+  const handleSaveConnection = async () => {
+    if (saveStatus === 'loading') return;
+
+    setSaveStatus('loading');
+    setSaveErrorMessage(null);
     NativeHapticsService.trigger('light');
-    HermesClient.getInstance().disconnect();
-    HermesClient.getInstance().connect();
-    Alert.alert('Settings Saved', `Reconnecting via ${methodInput === 'tui_gateway' ? 'TUI Gateway JSON-RPC' : 'Mock Server'}...`);
+
+    const cleanUrl = urlInput.trim();
+    const cleanToken = tokenInput.trim();
+
+    setServerUrl(cleanUrl);
+    setAuthToken(cleanToken);
+    setConnectionMethod('tui_gateway');
+
+    const result = await HermesClient.getInstance().connectWithFeedback(cleanUrl, cleanToken, 7000);
+
+    if (result.success) {
+      setSaveStatus('success');
+      NativeHapticsService.trigger('light');
+      setTimeout(() => {
+        setSaveStatus('idle');
+      }, 3000);
+    } else {
+      setSaveStatus('error');
+      setSaveErrorMessage(result.error || 'Connection failed. Verify server URL & token.');
+      NativeHapticsService.trigger('alert');
+      setTimeout(() => {
+        setSaveStatus('idle');
+      }, 4500);
+    }
   };
 
   // Self Tests
@@ -93,6 +117,20 @@ export const SettingsScreen: React.FC<Props> = ({ navigation }) => {
     Alert.alert('Haptics Test', 'Dispatched multi-stage alert vibration pattern.');
   };
 
+  const handleTestNotification = async () => {
+    NativeHapticsService.trigger('alert');
+    try {
+      const res = await McpRegistry.executeTool('send_notification', {
+        title: 'Hermes Priority Alert',
+        message: 'This is a native heads-up system notification delivered to your Android shade.',
+      });
+      const text = res.content[0]?.text || 'Notification sent';
+      Alert.alert('Notification Dispatched', text);
+    } catch (err: any) {
+      Alert.alert('Notification Error', err.message);
+    }
+  };
+
   const handleTestFlashlight = () => {
     NativeHapticsService.trigger('light');
     NativeTorchService.setTorch('strobe', { strobeIntervalMs: 120, durationSec: 3 });
@@ -102,14 +140,7 @@ export const SettingsScreen: React.FC<Props> = ({ navigation }) => {
   const handleTestPing = async () => {
     NativeHapticsService.trigger('light');
     try {
-      const pingReq = methodInput === 'tui_gateway'
-        ? HermesProtocol.createGatewayPing()
-        : {
-            jsonrpc: '2.0' as const,
-            id: `ping_${Date.now()}`,
-            method: 'ping',
-            params: { clientTimestamp: Date.now() },
-          };
+      const pingReq = HermesProtocol.createGatewayPing();
       const response = await HermesClient.getInstance().send(pingReq);
       Alert.alert('Ping Success', `Hermes Node responded: ${JSON.stringify(response)}`);
     } catch (err: any) {
@@ -187,80 +218,14 @@ export const SettingsScreen: React.FC<Props> = ({ navigation }) => {
         <View style={styles.sectionCard}>
           <Text style={styles.sectionTitle}>HERMES CONNECTION PROFILE</Text>
 
-          {/* Connection Method Selector */}
-          <Text style={styles.fieldLabel}>Connection Method</Text>
-          <View style={styles.methodSelector}>
-            <TouchableOpacity
-              style={[styles.methodBtn, methodInput === 'tui_gateway' && styles.methodBtnActive]}
-              onPress={() => setMethodInput('tui_gateway')}
-            >
-              <Text style={[styles.methodBtnText, methodInput === 'tui_gateway' && styles.methodBtnTextActive]}>
-                TUI Gateway (JSON-RPC)
-              </Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={[styles.methodBtn, methodInput === 'mock' && styles.methodBtnActive]}
-              onPress={() => setMethodInput('mock')}
-            >
-              <Text style={[styles.methodBtnText, methodInput === 'mock' && styles.methodBtnTextActive]}>
-                Mock Server
-              </Text>
-            </TouchableOpacity>
-          </View>
-
-          {methodInput === 'tui_gateway' && (
+          {activeSessionId ? (
             <View style={styles.sessionBox}>
               <Text style={styles.sessionLabel}>Active Session ID:</Text>
               <Text style={styles.sessionValue} numberOfLines={1} ellipsizeMode="middle">
-                {activeSessionId || 'Will auto-create upon connection'}
+                {activeSessionId}
               </Text>
             </View>
-          )}
-
-          {/* Presets */}
-          <Text style={styles.fieldLabel}>Quick Presets</Text>
-          <View style={styles.presetRow}>
-            <TouchableOpacity
-              style={styles.presetChip}
-              onPress={() => {
-                setUrlInput('wss://hermes-ws.nironman.com');
-                setMethodInput('tui_gateway');
-              }}
-            >
-              <Text style={styles.presetChipText}>☁️ Cloudflare Prod</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.presetChip}
-              onPress={() => {
-                setUrlInput('ws://192.168.1.11:8765');
-                setMethodInput('tui_gateway');
-              }}
-            >
-              <Text style={styles.presetChipText}>🌐 Ultron LAN</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.presetChip}
-              onPress={() => {
-                setUrlInput('ws://10.0.2.2:8765');
-                setMethodInput('tui_gateway');
-              }}
-            >
-              <Text style={styles.presetChipText}>📱 Emulator Local</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.presetChip}
-              onPress={() => {
-                setUrlInput('ws://127.0.0.1:8765');
-                setMethodInput('mock');
-              }}
-            >
-              <Text style={styles.presetChipText}>🧪 Mock</Text>
-            </TouchableOpacity>
-          </View>
+          ) : null}
 
           <Text style={styles.fieldLabel}>Hermes Server URL (WebSocket)</Text>
           <TextInput
@@ -339,9 +304,38 @@ export const SettingsScreen: React.FC<Props> = ({ navigation }) => {
             />
           </View>
 
-          <TouchableOpacity style={styles.saveBtn} onPress={handleSaveConnection}>
-            <Text style={styles.saveBtnText}>Save & Reconnect</Text>
+          <TouchableOpacity
+            style={[
+              styles.saveBtn,
+              saveStatus === 'loading' && styles.saveBtnLoading,
+              saveStatus === 'success' && styles.saveBtnSuccess,
+              saveStatus === 'error' && styles.saveBtnError,
+            ]}
+            onPress={handleSaveConnection}
+            disabled={saveStatus === 'loading'}
+            activeOpacity={0.8}
+          >
+            {saveStatus === 'loading' ? (
+              <View style={styles.btnContentRow}>
+                <ActivityIndicator size="small" color="#FFFFFF" style={{ marginRight: 8 }} />
+                <Text style={styles.saveBtnText}>Connecting to Hermes...</Text>
+              </View>
+            ) : saveStatus === 'success' ? (
+              <View style={styles.btnContentRow}>
+                <Text style={styles.saveBtnText}>✓ Connected Successfully</Text>
+              </View>
+            ) : saveStatus === 'error' ? (
+              <View style={styles.btnContentRow}>
+                <Text style={styles.saveBtnText}>✕ Connection Failed</Text>
+              </View>
+            ) : (
+              <Text style={styles.saveBtnText}>Save & Connect</Text>
+            )}
           </TouchableOpacity>
+
+          {saveErrorMessage ? (
+            <Text style={styles.saveErrorText}>⚠️ {saveErrorMessage}</Text>
+          ) : null}
         </View>
 
         {/* Section 2: Hardware Permissions */}
@@ -434,6 +428,11 @@ export const SettingsScreen: React.FC<Props> = ({ navigation }) => {
             <TouchableOpacity style={styles.testBtn} onPress={handleTestHaptics}>
               <Text style={styles.testBtnIcon}>📳</Text>
               <Text style={styles.testBtnText}>Test Haptic</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity style={styles.testBtn} onPress={handleTestNotification}>
+              <Text style={styles.testBtnIcon}>📬</Text>
+              <Text style={styles.testBtnText}>Notification</Text>
             </TouchableOpacity>
 
             <TouchableOpacity style={styles.testBtn} onPress={handleTestFlashlight}>
@@ -690,6 +689,27 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     alignItems: 'center',
     marginTop: 16,
+  },
+  saveBtnLoading: {
+    backgroundColor: '#1E40AF',
+  },
+  saveBtnSuccess: {
+    backgroundColor: '#10B981',
+  },
+  saveBtnError: {
+    backgroundColor: '#EF4444',
+  },
+  btnContentRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  saveErrorText: {
+    color: '#F87171',
+    fontSize: 12,
+    marginTop: 8,
+    textAlign: 'center',
+    fontWeight: '500',
   },
   saveBtnText: {
     color: '#FFFFFF',

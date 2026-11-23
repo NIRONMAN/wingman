@@ -1,11 +1,15 @@
+import { NativeModules, Platform } from 'react-native';
+
 export type TorchMode = 'on' | 'off' | 'strobe';
+
+const { WingmanTorch } = NativeModules;
 
 export class NativeTorchService {
   private static strobeTimer: any = null;
   private static autoOffTimer: any = null;
   private static isCurrentlyOn: boolean = false;
 
-  private static getTorchModule(): any {
+  private static getFallbackTorch(): any {
     try {
       const Torch = require('react-native-torch').default;
       return Torch;
@@ -14,38 +18,90 @@ export class NativeTorchService {
     }
   }
 
-  private static setHardwareTorch(on: boolean): void {
-    const Torch = this.getTorchModule();
-    if (Torch?.switchState) {
-      Torch.switchState(on);
-    }
-    this.isCurrentlyOn = on;
-  }
-
   static async setTorch(
     mode: TorchMode,
     options?: { strobeIntervalMs?: number; durationSec?: number }
   ): Promise<{ success: boolean; state: string; details: string }> {
     this.clearTimers();
 
-    const Torch = this.getTorchModule();
-    const hasHardware = Boolean(Torch?.switchState);
+    // 1. Prefer our native WingmanTorch module
+    if (Platform.OS === 'android' && WingmanTorch) {
+      try {
+        if (mode === 'off') {
+          await WingmanTorch.setTorch(false);
+          this.isCurrentlyOn = false;
+          return {
+            success: true,
+            state: 'off',
+            details: 'Flashlight turned off (native)'
+          };
+        }
+
+        if (mode === 'on') {
+          await WingmanTorch.setTorch(true);
+          this.isCurrentlyOn = true;
+
+          if (options?.durationSec && options.durationSec > 0) {
+            this.autoOffTimer = setTimeout(async () => {
+              try {
+                await WingmanTorch.setTorch(false);
+              } catch {}
+              this.isCurrentlyOn = false;
+              this.autoOffTimer = null;
+            }, options.durationSec * 1000);
+          }
+
+          return {
+            success: true,
+            state: 'on',
+            details: `Flashlight switched ON (native)${options?.durationSec ? ` (auto-off in ${options.durationSec}s)` : ''}`
+          };
+        }
+
+        if (mode === 'strobe') {
+          const interval = Math.max(60, options?.strobeIntervalMs || 120);
+          const duration = options?.durationSec || 4;
+          await WingmanTorch.strobe(interval, duration);
+          this.isCurrentlyOn = true;
+
+          this.autoOffTimer = setTimeout(() => {
+            this.isCurrentlyOn = false;
+            this.autoOffTimer = null;
+          }, duration * 1000);
+
+          return {
+            success: true,
+            state: 'strobe',
+            details: `Flashlight strobing natively at ${interval}ms for ${duration}s`
+          };
+        }
+      } catch (err: any) {
+        console.warn('[NativeTorchService] Native WingmanTorch error, falling back:', err?.message || err);
+      }
+    }
+
+    // 2. Fallback to react-native-torch or simulated
+    const fallbackTorch = this.getFallbackTorch();
+    const hasHardware = Boolean(fallbackTorch?.switchState);
 
     if (mode === 'off') {
-      this.setHardwareTorch(false);
+      if (hasHardware) fallbackTorch.switchState(false);
+      this.isCurrentlyOn = false;
       return {
         success: true,
         state: 'off',
-        details: hasHardware ? 'Flashlight turned off' : 'Virtual flashlight turned off (no hardware bridge)'
+        details: hasHardware ? 'Flashlight turned off' : 'Virtual flashlight turned off (simulated)'
       };
     }
 
     if (mode === 'on') {
-      this.setHardwareTorch(true);
+      if (hasHardware) fallbackTorch.switchState(true);
+      this.isCurrentlyOn = true;
 
       if (options?.durationSec && options.durationSec > 0) {
         this.autoOffTimer = setTimeout(() => {
-          this.setHardwareTorch(false);
+          if (hasHardware) fallbackTorch.switchState(false);
+          this.isCurrentlyOn = false;
           this.autoOffTimer = null;
         }, options.durationSec * 1000);
       }
@@ -53,9 +109,7 @@ export class NativeTorchService {
       return {
         success: true,
         state: 'on',
-        details: hasHardware
-          ? `Flashlight switched ON${options?.durationSec ? ` (auto-off in ${options.durationSec}s)` : ''}`
-          : 'Virtual flashlight simulated ON'
+        details: hasHardware ? 'Flashlight switched ON' : 'Virtual flashlight simulated ON'
       };
     }
 
@@ -65,19 +119,20 @@ export class NativeTorchService {
 
       this.strobeTimer = setInterval(() => {
         state = !state;
-        this.setHardwareTorch(state);
+        if (hasHardware) fallbackTorch.switchState(state);
       }, interval);
 
-      const duration = options?.durationSec || 5; // Default strobe for 5 seconds
+      const duration = options?.durationSec || 4;
       this.autoOffTimer = setTimeout(() => {
         this.clearTimers();
-        this.setHardwareTorch(false);
+        if (hasHardware) fallbackTorch.switchState(false);
+        this.isCurrentlyOn = false;
       }, duration * 1000);
 
       return {
         success: true,
         state: 'strobe',
-        details: `Flashlight strobing at ${interval}ms intervals for ${duration}s`
+        details: `Flashlight strobing at ${interval}ms for ${duration}s`
       };
     }
 

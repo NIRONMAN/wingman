@@ -32,6 +32,58 @@ export class HermesClient {
     this.currentSessionId = sessionId;
   }
 
+  /**
+   * Connect to Hermes and return a promise resolving with the connection outcome.
+   * Provides non-blocking UI feedback (loading state, green on success, red on failure).
+   */
+  public async connectWithFeedback(
+    url?: string,
+    token?: string,
+    timeoutMs: number = 7000
+  ): Promise<{ success: boolean; error?: string }> {
+    return new Promise((resolve) => {
+      // Disconnect any active connection first
+      this.disconnect();
+
+      if (url) {
+        useSettingsStore.getState().setServerUrl(url);
+      }
+      if (token !== undefined) {
+        useSettingsStore.getState().setAuthToken(token);
+      }
+
+      let settled = false;
+      let timer: any = null;
+
+      const finish = (success: boolean, error?: string) => {
+        if (settled) return;
+        settled = true;
+        if (timer) clearTimeout(timer);
+        resolve({ success, error });
+      };
+
+      timer = setTimeout(() => {
+        finish(false, 'Connection timed out. Server did not respond within 7s.');
+      }, timeoutMs);
+
+      const unsubscribe = useChatStore.subscribe((state) => {
+        if (settled) {
+          unsubscribe();
+          return;
+        }
+        if (state.connectionStatus === 'connected') {
+          unsubscribe();
+          finish(true);
+        } else if (state.connectionStatus === 'error') {
+          unsubscribe();
+          finish(false, 'Connection error. Check URL or verify auth token.');
+        }
+      });
+
+      this.connect();
+    });
+  }
+
   public connect(): void {
     this.isIntentionallyClosed = false;
     const { serverUrl, authToken, connectionMethod } = useSettingsStore.getState();
@@ -104,6 +156,7 @@ export class HermesClient {
 
       this.ws.onerror = (error: any) => {
         console.log('[HermesClient] WebSocket error:', error?.message || error);
+        useChatStore.getState().setConnectionStatus('error');
       };
 
       this.ws.onclose = (event: any) => {
@@ -221,15 +274,39 @@ export class HermesClient {
     return null;
   }
 
-  public sendMessage(text: string, voiceMemo?: { durationSec: number; audioUri?: string }): string {
+  public sendMessage(
+    text: string,
+    optionsOrVoiceMemo?:
+      | {
+          durationSec: number;
+          audioUri?: string;
+        }
+      | {
+          voiceMemo?: { durationSec: number; audioUri?: string };
+          imageAttachment?: { uri?: string; base64?: string; mimeType?: string; width?: number; height?: number };
+        }
+  ): string {
     const chatStore = useChatStore.getState();
     const { connectionMethod } = useSettingsStore.getState();
+
+    let voiceMemo: { durationSec: number; audioUri?: string } | undefined;
+    let imageAttachment: { uri?: string; base64?: string; mimeType?: string; width?: number; height?: number } | undefined;
+
+    if (optionsOrVoiceMemo) {
+      if ('durationSec' in optionsOrVoiceMemo) {
+        voiceMemo = optionsOrVoiceMemo;
+      } else {
+        voiceMemo = optionsOrVoiceMemo.voiceMemo;
+        imageAttachment = optionsOrVoiceMemo.imageAttachment;
+      }
+    }
 
     // Add user message to local chat immediately
     const userMsgId = chatStore.addMessage({
       role: 'user',
       content: text,
       voiceMemo,
+      imageAttachment,
     });
 
     if (connectionMethod === 'tui_gateway') {
@@ -238,7 +315,13 @@ export class HermesClient {
         this.pendingPromptsQueue.push(text);
         this.createTuiSession();
       } else {
-        const promptReq = HermesProtocol.createPromptSubmit(this.currentSessionId, text);
+        const extraParams = imageAttachment?.base64
+          ? {
+              imageBase64: imageAttachment.base64,
+              imageMimeType: imageAttachment.mimeType,
+            }
+          : undefined;
+        const promptReq = HermesProtocol.createPromptSubmit(this.currentSessionId, text, extraParams);
         this.send(promptReq).catch((err) => {
           console.error('[HermesClient] prompt.submit error:', err?.message || err);
         });
@@ -249,6 +332,7 @@ export class HermesClient {
         messageId: userMsgId,
         text,
         voiceMemo,
+        imageAttachment,
       });
       this.send(chatReq);
     }

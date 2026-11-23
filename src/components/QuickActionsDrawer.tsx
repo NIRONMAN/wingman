@@ -3,29 +3,52 @@ import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-nati
 import { HermesClient } from '../services/hermes/client';
 import { McpRegistry } from '../services/mcp/registry';
 import { NativeHapticsService } from '../services/mcp/hardware/nativeHaptics';
+import { useCallStore } from '../store/useCallStore';
 
 interface Props {
   onOpenVoiceMemo: () => void;
 }
 
 export const QuickActionsDrawer: React.FC<Props> = ({ onOpenVoiceMemo }) => {
-  const handleRescueCall = () => {
+  const handleDemoCall = () => {
     NativeHapticsService.trigger('heavy');
-    HermesClient.getInstance().sendMessage(
-      '🚨 Rescue call requested! Call my phone right now with an urgent excuse so I can step away.'
-    );
+    useCallStore.getState().triggerIncomingCall({
+      callId: `urgent_demo_${Date.now()}`,
+      callerName: 'Hermes AI (Urgent Priority)',
+      callerNumber: '+1 (800) HERMES-AI',
+      ttsScript: 'Urgent attention required. This is a demonstration of an incoming urgent call from your Hermes companion. Voice channel is active and responsive.',
+      autoDeclineTimeoutSec: 25,
+    });
   };
 
   const handleSnapInspect = async () => {
     NativeHapticsService.trigger('light');
-    const result = await McpRegistry.executeTool('capture_snapshot', {
-      cameraType: 'back',
-      quality: 0.8,
-    });
-    const summary = result.content.find((c) => c.type === 'text')?.text || 'Snapshot captured';
-    HermesClient.getInstance().sendMessage(
-      `📸 [Live Camera Snapshot Attached]: ${summary}\nPlease inspect this visual frame and tell me what you see.`
-    );
+    try {
+      const result = await McpRegistry.executeTool('capture_snapshot', {
+        cameraType: 'back',
+        quality: 0.8,
+      });
+      const summary = result.content.find((c) => c.type === 'text')?.text || 'Snapshot captured';
+      const imgItem = result.content.find((c) => c.type === 'image');
+      const base64Data = (imgItem as any)?.data;
+      const mimeType = (imgItem as any)?.mimeType || 'image/jpeg';
+      const uri = (imgItem as any)?.uri;
+
+      HermesClient.getInstance().sendMessage(
+        `📸 [Live Camera Snapshot Attached]: ${summary}\nPlease inspect this visual frame and tell me what you see.`,
+        {
+          imageAttachment: base64Data
+            ? {
+                base64: base64Data,
+                uri,
+                mimeType,
+              }
+            : undefined,
+        }
+      );
+    } catch (err: any) {
+      console.error('[QuickActionsDrawer] Snap & inspect failed:', err);
+    }
   };
 
   const handleFlashlightStrobe = () => {
@@ -64,9 +87,9 @@ export const QuickActionsDrawer: React.FC<Props> = ({ onOpenVoiceMemo }) => {
     <View style={styles.container}>
       <Text style={styles.headerTitle}>QUICK PHYSICAL ACTIONS</Text>
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
-        <TouchableOpacity style={[styles.actionCard, styles.rescueCard]} onPress={handleRescueCall}>
-          <Text style={styles.actionIcon}>🚨</Text>
-          <Text style={styles.actionLabel}>Rescue Call</Text>
+        <TouchableOpacity style={[styles.actionCard, styles.callCard]} onPress={handleDemoCall}>
+          <Text style={styles.actionIcon}>📞</Text>
+          <Text style={styles.actionLabel}>Demo Call</Text>
         </TouchableOpacity>
 
         <TouchableOpacity style={styles.actionCard} onPress={onOpenVoiceMemo}>
@@ -132,9 +155,9 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#334155',
   },
-  rescueCard: {
-    backgroundColor: '#451A1A',
-    borderColor: '#7F1D1D',
+  callCard: {
+    backgroundColor: '#1E3A8A',
+    borderColor: '#3B82F6',
   },
   actionIcon: {
     fontSize: 16,

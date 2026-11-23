@@ -68,6 +68,7 @@ export class HermesProtocol {
   static createPromptSubmit(
     sessionId: string,
     text: string,
+    extraParams?: Record<string, any>,
     submissionId?: string,
     id?: string | number
   ): JsonRpcRequest {
@@ -78,6 +79,7 @@ export class HermesProtocol {
         session_id: sessionId,
         text,
         submission_id: subId,
+        ...(extraParams || {}),
       },
       id
     );

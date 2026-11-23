@@ -9,6 +9,14 @@ export interface ToolCallBadgeInfo {
   resultSummary?: string;
 }
 
+export interface ImageAttachment {
+  uri?: string;
+  base64?: string;
+  mimeType?: string;
+  width?: number;
+  height?: number;
+}
+
 export interface ChatMessage {
   id: string;
   role: MessageRole;
@@ -20,6 +28,7 @@ export interface ChatMessage {
     durationSec: number;
     audioUri?: string;
   };
+  imageAttachment?: ImageAttachment;
 }
 
 export interface QuickActionItem {

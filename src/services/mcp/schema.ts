@@ -3,7 +3,7 @@ import { McpToolDefinition } from '../../types/mcp';
 export const MCP_TOOLS: McpToolDefinition[] = [
   {
     name: 'simulate_call',
-    description: 'Triggers a realistic incoming phone call screen on the user mobile device with customizable caller details, ringtone, vibration, and TTS speech playback when answered (ideal for rescue calls or urgent spoken briefs).',
+    description: 'Initiates an urgent incoming phone call to the user with realistic ringtone, vibration, and synthesized TTS speech brief upon answering. Used when a situation has high urgency, critical priority, or requires immediate real-time spoken intervention.',
     category: 'interaction',
     inputSchema: {
       type: 'object',
@@ -38,7 +38,7 @@ export const MCP_TOOLS: McpToolDefinition[] = [
   },
   {
     name: 'send_notification',
-    description: 'Dispatches a heads-up native mobile notification with title, body, and customizable actionable response buttons.',
+    description: 'Dispatches a push notification to the user mobile device for moderate urgency updates, background alerts, reminders, or questions that need user attention without placing an urgent phone call.',
     category: 'interaction',
     inputSchema: {
       type: 'object',

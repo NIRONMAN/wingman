@@ -10,6 +10,8 @@
     "test:coverage": "jest --coverage",
     "typecheck": "tsc --noEmit",
     "mock-server": "node test-hermes-server.js",
+    "proxy": "node scripts/hermes-tui-gateway-proxy.js",
+    "generate:token": "node scripts/generate-token.js",
     "postinstall": "node scripts/fix-expo-hmr.js"
   },
   "dependencies": {
